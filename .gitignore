@@ -1,0 +1,29 @@
+# Data directories
+data/
+
+# Attachment downloads
+attachments/
+
+# Debug scripts
+debug_attachments.ps1
+debug-safelinks.ps1
+extract-email.ps1
+
+# Test files
+test-links.ps1
+test_safelink.ps1
+email-body-*.html
+email-body-*.txt
+
+# Test files
+email.jpg
+
+# HTML footer (optional - users create their own)
+data/footer.html
+
+# PowerShell temporary files
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
