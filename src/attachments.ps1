@@ -73,7 +73,7 @@ function Invoke-SaveAttachment {
     }
     
     # Create attachments directory if needed
-    $attachDir = Join-Path (Get-Location).Path "attachments"
+    $attachDir = Join-Path (Get-Location).Path $Config.AttachmentsConfig.SaveDirectory
     if (-not (Test-Path $attachDir)) {
         New-Item -Path $attachDir -ItemType Directory -Force | Out-Null
     }
@@ -155,7 +155,7 @@ function Invoke-SaveAllAttachments {
     }
     
     # Create attachments directory if needed
-    $attachDir = Join-Path (Get-Location).Path "attachments"
+    $attachDir = Join-Path (Get-Location).Path $Config.AttachmentsConfig.SaveDirectory
     if (-not (Test-Path $attachDir)) {
         New-Item -Path $attachDir -ItemType Directory -Force | Out-Null
     }

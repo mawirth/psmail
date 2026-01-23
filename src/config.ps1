@@ -49,6 +49,40 @@ $script:Config = @{
     # Footer file path (relative to script root)
     FooterPath = Join-Path $PSScriptRoot "..\data\footer.txt"
     
+    # HTML body formatting (when sending HTML emails)
+    HtmlBodyStyle = @{
+        FontFamily = "Arial"
+        FontSize = "10pt"
+    }
+    
+    # Email templates and formatting
+    EmailTemplates = @{
+        # Draft template separator
+        HeaderSeparator = "---"
+        
+        # Reply/Forward prefixes
+        ReplyPrefix = "Re: "
+        ForwardPrefix = "Fwd: "
+        
+        # Quote markers for replies
+        OriginalMessageHeader = "--- Original Message ---"
+        ForwardedMessageHeader = "--- Forwarded Message ---"
+        QuotePrefix = "> "
+        
+        # Attachment marker for existing attachments in draft editor
+        ExistingAttachmentPrefix = "[existing: "
+        ExistingAttachmentSuffix = "]"
+    }
+    
+    # Attachments configuration
+    AttachmentsConfig = @{
+        # Directory for saving attachments (relative to current directory)
+        SaveDirectory = "attachments"
+        
+        # Recipient address separator (for To, CC, BCC fields)
+        RecipientSeparators = @(',', ';')
+    }
+    
     # S/MIME status values
     SmimeStatus = @{
         None             = "None"

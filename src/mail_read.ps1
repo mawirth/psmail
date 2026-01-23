@@ -220,9 +220,10 @@ function Invoke-ReplyMessage {
     $toList = $toAddresses -join ", "
     
     # Build subject with Re:
+    $rePrefix = $Config.EmailTemplates.ReplyPrefix
     $subject = $msg.subject
-    if ($subject -notmatch '^Re:') {
-        $subject = "Re: $subject"
+    if ($subject -notmatch "^$rePrefix") {
+        $subject = $rePrefix + $subject
     }
     
     # Get original body
@@ -233,23 +234,26 @@ function Invoke-ReplyMessage {
     
     # Build quoted reply
     $receivedDate = [datetime]$msg.receivedDateTime
-    $quotedBody = "`n`n--- Original Message ---`n"
+    $msgHeader = $Config.EmailTemplates.OriginalMessageHeader
+    $quotePrefix = $Config.EmailTemplates.QuotePrefix
+    $quotedBody = "`n`n$msgHeader`n"
     $quotedBody += "From: $($msg.from.emailAddress.address)`n"
     $quotedBody += "Date: $(Format-DateTime $receivedDate)`n"
     $quotedBody += "Subject: $($msg.subject)`n`n"
     
     # Quote each line of original
     $originalBody -split "`n" | ForEach-Object {
-        $quotedBody += "> $_`n"
+        $quotedBody += "$quotePrefix$_`n"
     }
     
     # Build template
+    $separator = $Config.EmailTemplates.HeaderSeparator
     $template = @"
 To: $toList
 Subject: $subject
 Attachments: 
 
----
+$separator
 $quotedBody
 "@
     
@@ -294,7 +298,8 @@ $quotedBody
     # Create recipients array
     $toRecipients = @()
     if (-not [string]::IsNullOrWhiteSpace($parsed.To)) {
-        $toAddresses = $parsed.To -split '[,;]' | ForEach-Object { 
+        $separators = $Config.AttachmentsConfig.RecipientSeparators -join ''
+        $toAddresses = $parsed.To -split "[$separators]" | ForEach-Object { 
             $_.Trim() 
         }
         foreach ($addr in $toAddresses) {
@@ -378,9 +383,10 @@ function Invoke-ForwardMessage {
     }
     
     # Build subject with Fwd:
+    $fwdPrefix = $Config.EmailTemplates.ForwardPrefix
     $subject = $msg.subject
-    if ($subject -notmatch '^Fwd:' -and $subject -notmatch '^FW:') {
-        $subject = "Fwd: $subject"
+    if ($subject -notmatch "^$fwdPrefix" -and $subject -notmatch '^FW:') {
+        $subject = $fwdPrefix + $subject
     }
     
     # Get original body
@@ -391,7 +397,8 @@ function Invoke-ForwardMessage {
     
     # Build forwarded message
     $receivedDate = [datetime]$msg.receivedDateTime
-    $forwardedBody = "`n`n--- Forwarded Message ---`n"
+    $msgHeader = $Config.EmailTemplates.ForwardedMessageHeader
+    $forwardedBody = "`n`n$msgHeader`n"
     $forwardedBody += "From: $($msg.from.emailAddress.address)`n"
     $forwardedBody += "Date: $(Format-DateTime $receivedDate)`n"
     $forwardedBody += "Subject: $($msg.subject)`n"
@@ -406,12 +413,13 @@ function Invoke-ForwardMessage {
     $forwardedBody += "`n$originalBody"
     
     # Build template
+    $separator = $Config.EmailTemplates.HeaderSeparator
     $template = @"
 To: 
 Subject: $subject
 Attachments: 
 
----
+$separator
 $forwardedBody
 "@
     
@@ -456,7 +464,8 @@ $forwardedBody
     # Create recipients array
     $toRecipients = @()
     if (-not [string]::IsNullOrWhiteSpace($parsed.To)) {
-        $toAddresses = $parsed.To -split '[,;]' | ForEach-Object { 
+        $separators = $Config.AttachmentsConfig.RecipientSeparators -join ''
+        $toAddresses = $parsed.To -split "[$separators]" | ForEach-Object { 
             $_.Trim() 
         }
         foreach ($addr in $toAddresses) {

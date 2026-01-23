@@ -8,12 +8,13 @@ function Invoke-NewDraft {
     #>
     
     # Create template
+    $separator = $Config.EmailTemplates.HeaderSeparator
     $template = @"
 To: 
 Subject: 
 Attachments: 
 
----
+$separator
 "@
     
     # Open editor
@@ -63,7 +64,8 @@ Attachments:
     # Create recipients array
     $toRecipients = @()
     if (-not [string]::IsNullOrWhiteSpace($parsed.To)) {
-        $toAddresses = $parsed.To -split '[,;]' | ForEach-Object { 
+        $separators = $Config.AttachmentsConfig.RecipientSeparators -join ''
+        $toAddresses = $parsed.To -split "[$separators]" | ForEach-Object { 
             $_.Trim() 
         }
         foreach ($addr in $toAddresses) {
@@ -148,18 +150,27 @@ function Invoke-EditDraft {
     $attachmentList = ""
     if ($existingAttachments `
         -and $existingAttachments.Count -gt 0) {
+        $prefix = $Config.EmailTemplates.ExistingAttachmentPrefix
+        $suffix = $Config.EmailTemplates.ExistingAttachmentSuffix
         $attachmentList = ($existingAttachments | ForEach-Object { 
-            "[existing: $($_.name)]" 
+            "$prefix$($_.name)$suffix" 
         }) -join ", "
     }
     
+    # Get body content and convert HTML to text if needed
+    $bodyContent = $draft.body.content
+    if ($draft.body.contentType -eq "HTML") {
+        $bodyContent = Convert-HtmlToText $bodyContent
+    }
+    
+    $separator = $Config.EmailTemplates.HeaderSeparator
     $content = @"
 To: $toList
 Subject: $($draft.subject)
 Attachments: $attachmentList
 
----
-$($draft.body.content)
+$separator
+$bodyContent
 "@
     
     # Open editor
@@ -194,7 +205,8 @@ $($draft.body.content)
     # Build recipients
     $toRecipients = @()
     if (-not [string]::IsNullOrWhiteSpace($parsed.To)) {
-        $toAddresses = $parsed.To -split '[,;]' | ForEach-Object { 
+        $separators = $Config.AttachmentsConfig.RecipientSeparators -join ''
+        $toAddresses = $parsed.To -split "[$separators]" | ForEach-Object { 
             $_.Trim() 
         }
         foreach ($addr in $toAddresses) {
@@ -208,12 +220,29 @@ $($draft.body.content)
         }
     }
     
+    # Determine if original draft was HTML
+    $wasHtml = ($draft.body.contentType -eq "HTML")
+    $contentType = "Text"
+    $body = $parsed.Body
+    
+    # If original was HTML, convert edited text back to HTML
+    if ($wasHtml) {
+        $contentType = "HTML"
+        $body = Convert-TextToHtml $body
+        
+        # Re-append footer if it exists
+        $footer = Get-Footer
+        if ($footer -and $footer.Type -eq "HTML") {
+            $body += "`n" + $footer.Content
+        }
+    }
+    
     # Update draft
     $updates = @{
         subject = $parsed.Subject
         body = @{
-            contentType = "Text"
-            content = $parsed.Body
+            contentType = $contentType
+            content = $body
         }
         toRecipients = $toRecipients
     }
@@ -300,7 +329,8 @@ function Parse-DraftContent {
     }
     
     # Split into header and body at separator
-    $separatorIndex = $Content.IndexOf("`n---")
+    $separator = $Config.EmailTemplates.HeaderSeparator
+    $separatorIndex = $Content.IndexOf("`n$separator")
     
     if ($separatorIndex -eq -1) {
         return $null
@@ -326,9 +356,10 @@ function Parse-DraftContent {
             if (-not [string]::IsNullOrWhiteSpace($attLine)) {
                 $paths = $attLine -split '[,;]' | ForEach-Object {
                     $_.Trim()
+                $existingPrefix = [regex]::Escape($Config.EmailTemplates.ExistingAttachmentPrefix)
                 } | Where-Object {
                     -not [string]::IsNullOrWhiteSpace($_) `
-                        -and $_ -notmatch '^\[existing:'
+                        -and $_ -notmatch "^$existingPrefix"
                 }
                 $attachments = @($paths)
             }
@@ -383,7 +414,7 @@ function Get-Footer {
 function Convert-TextToHtml {
     <#
     .SYNOPSIS
-    Convert plain text to HTML
+    Convert plain text to HTML with configured font styling
     #>
     param([string]$Text)
     
@@ -403,6 +434,14 @@ function Convert-TextToHtml {
     
     # Wrap in paragraphs
     $html = "<p>$html</p>"
+    
+    # Apply font styling from config
+    $fontFamily = $Config.HtmlBodyStyle.FontFamily
+    $fontSize = $Config.HtmlBodyStyle.FontSize
+    $styleAttr = "font-family: $fontFamily; font-size: $fontSize;"
+    
+    # Wrap in div with font styling
+    $html = "<div style=`"$styleAttr`">$html</div>"
     
     return $html
 }
@@ -494,9 +533,10 @@ function Invoke-RedraftMessage {
     }
     
     # Prepare subject with Fwd: prefix
+    $fwdPrefix = $Config.EmailTemplates.ForwardPrefix
     $subject = $original.subject
-    if (-not $subject.StartsWith("Fwd:")) {
-        $subject = "Fwd: " + $subject
+    if (-not $subject.StartsWith($fwdPrefix)) {
+        $subject = $fwdPrefix + $subject
     }
     
     # Get body content

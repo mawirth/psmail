@@ -162,7 +162,7 @@ function Show-MessageList {
         Write-Host "#  U A  Date              " `
             -NoNewline
         
-        if ($view -eq "sentitems") {
+        if ($view -eq "sentitems" -or $view -eq "drafts") {
             Write-Host "To                 " -NoNewline
         } else {
             Write-Host "From               " -NoNewline
@@ -196,7 +196,7 @@ function Show-MessageList {
         Write-Host "$date  " -NoNewline
         
         # From/To
-        $addr = if ($view -eq "sentitems") { 
+        $addr = if ($view -eq "sentitems" -or $view -eq "drafts") { 
             $item.ToAddress 
         } else { 
             $item.FromAddress 
