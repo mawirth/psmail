@@ -249,7 +249,28 @@ function Invoke-RefreshMessageList {
     # Remove deleted items from state and re-index
     Remove-StateItems -MessageIds $DeletedMessageIds
     
-    # Display updated list
+    # Check if we should auto-load more messages
+    # Load more if: list is empty OR list has fewer than 5 items AND more available
+    if ($global:State.NextLink) {
+        if ($global:State.Items.Count -eq 0) {
+            # List is empty, auto-load next page
+            Write-Host ""
+            Write-Host "List empty, loading more messages..." -ForegroundColor Cyan
+            Invoke-ListMore
+            return
+        }
+        elseif ($global:State.Items.Count -lt 5) {
+            # List has very few items, offer to load more
+            Show-CurrentView
+            Show-MessageList
+            Write-Host ""
+            Write-Host "Only $($global:State.Items.Count) message(s) remaining. " -NoNewline -ForegroundColor Yellow
+            Write-Host "Press [M] to load more." -ForegroundColor Yellow
+            return
+        }
+    }
+    
+    # Display updated list normally
     Show-CurrentView
     Show-MessageList
 }
