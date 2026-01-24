@@ -55,8 +55,9 @@ function Show-Menu {
                 -ForegroundColor Yellow
         }
         "sentitems" {
-            Write-Host "[L] List  [R #] Read  [REDRAFT #]" `
-                -ForegroundColor Yellow
+            Write-Host "[L] List  [R #] Read  [REDRAFT #]  " `
+                -NoNewline
+            Write-Host "[X #/#-#] Delete" -ForegroundColor Yellow
         }
         "deleteditems" {
             Write-Host "[L] List  [R #] Read  [RESTORE #/#-#]  " `

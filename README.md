@@ -69,33 +69,34 @@ On first run, you will be prompted to:
 
 #### Common Commands
 - `L` - List/refresh current folder
-- `O <#>` - Open message by number
-- `MORE` - Load next page of messages
+- `R <#>` - Read message by number
+- `M` - Load next page of messages
 - `FILTER <suchtext>` - Filter messages by search term (searches From, Subject, Body)
 - `CLEAR` - Remove active filter
 
 #### Inbox
-- `X <#>` - Delete message (move to Deleted)
-- `K <#>` - Mark as Junk
+- `X <#>` or `X <#-#>` - Delete message(s) (move to Deleted)
+- `K <#>` or `K <#-#>` - Mark as Junk
 
 #### Drafts
 - `NEW` - Create new draft
 - `E <#>` - Edit existing draft
 - `SEND <#>` - Send draft
-- `X <#>` - Delete draft
+- `X <#>` or `X <#-#>` - Delete draft(s)
 
 #### Sent
-- `O <#>` - Open sent message
+- `R <#>` - Read sent message
 - `REDRAFT <#>` - Copy to drafts for resending (includes recipients and attachments)
+- `X <#>` or `X <#-#>` - Delete sent message(s) (move to Deleted)
 
 #### Deleted
-- `RESTORE <#>` - Move back to Inbox
-- `PURGE <#>` - Delete permanently
-- `X <#>` - Same as PURGE
+- `RESTORE <#>` or `RESTORE <#-#>` - Move back to Inbox
+- `PURGE <#>` or `PURGE <#-#>` - Delete permanently
+- `X <#>` or `X <#-#>` - Same as PURGE
 
 #### Junk
-- `INBOX <#>` - Move to Inbox (mark as not junk)
-- `X <#>` - Delete permanently
+- `INBOX <#>` or `INBOX <#-#>` - Move to Inbox (mark as not junk)
+- `X <#>` or `X <#-#>` - Delete permanently
 
 #### When Viewing a Message
 - `REPLY` - Reply to sender
@@ -104,6 +105,38 @@ On first run, you will be prompted to:
 - `ATT` - List attachments
 - `SAVE <#>` - Save specific attachment
 - `SAVEALL` - Save all non-inline attachments
+
+### Bulk Operations (Range Support)
+
+Many commands support bulk operations using ranges:
+
+**Single message:**
+```
+> X 3
+```
+Deletes message #3
+
+**Range of messages:**
+```
+> X 2-5
+```
+Deletes messages #2, #3, #4, and #5
+
+**Reversed range (automatic correction):**
+```
+> X 5-2
+```
+Same as `X 2-5` - automatically sorts the range
+
+**Commands supporting ranges:**
+- `X` - Delete/move to deleted in all folders
+- `K` - Move to Junk (from Inbox)
+- `INBOX` - Move to Inbox (from Junk)
+- `RESTORE` - Restore from Deleted
+- `PURGE` - Permanently delete from Deleted
+
+**Confirmation:**
+All bulk operations show a list of affected messages and require confirmation before proceeding.
 
 ### Contact Search
 - `CONTACTS` - Search your email history for contacts
@@ -134,7 +167,7 @@ Displays all emails again.
 - **Substring matching**: Finds partial matches
 - **Multi-field search**: Searches From, Subject, and Body simultaneously
 - **Filter indicator**: Active filters are displayed in yellow above the message list: `[Filter active: 'searchtext']`
-- **Pagination works with filters**: Use `MORE` to load additional filtered results
+- **Pagination works with filters**: Use `M` to load additional filtered results
 - **Auto-reset on folder change**: Filter is cleared when switching folders
 
 ### Performance
