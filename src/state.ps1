@@ -36,6 +36,36 @@ function Get-StateItem {
     return $global:State.Items[$Index - 1]
 }
 
+function Remove-StateItems {
+    <#
+    .SYNOPSIS
+    Remove items from state by their IDs and re-index remaining items
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [array]$MessageIds
+    )
+    
+    if ($MessageIds.Count -eq 0) {
+        return
+    }
+    
+    # Filter out items with matching IDs
+    $remainingItems = @($global:State.Items | Where-Object { 
+        $MessageIds -notcontains $_.Id 
+    })
+    
+    # Re-index remaining items
+    $index = 1
+    foreach ($item in $remainingItems) {
+        $item.Index = $index
+        $index++
+    }
+    
+    # Update state
+    $global:State.Items = $remainingItems
+}
+
 function Set-View {
     param([string]$FolderId)
     

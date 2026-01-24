@@ -189,12 +189,14 @@ while ($true) {
             
             if (Confirm-Action $confirmMsg) {
                 $successCount = 0
+                $deletedIds = @()
                 foreach ($entry in $items) {
                     $item = $entry.Item
                     if ($view -eq "deleteditems") {
                         # Hard delete (purge)
                         if (Remove-Message -MessageId $item.Id) {
                             $successCount++
+                            $deletedIds += $item.Id
                         }
                     } else {
                         # Move to deleted
@@ -202,6 +204,7 @@ while ($true) {
                             -MessageId $item.Id `
                             -DestinationFolderId $Config.Folders.Deleted) {
                             $successCount++
+                            $deletedIds += $item.Id
                         }
                     }
                 }
@@ -211,7 +214,9 @@ while ($true) {
                 } else {
                     Write-Success "$successCount message(s) moved to Deleted"
                 }
-                Invoke-ListMessages
+                
+                # Refresh list without reloading (preserves NextLink for filters)
+                Invoke-RefreshMessageList -DeletedMessageIds $deletedIds
             }
         }
         "K" {
@@ -277,17 +282,21 @@ while ($true) {
             
             if (Confirm-Action $confirmMsg) {
                 $successCount = 0
+                $movedIds = @()
                 foreach ($entry in $items) {
                     $item = $entry.Item
                     if (Move-Message `
                         -MessageId $item.Id `
                         -DestinationFolderId $Config.Folders.Junk) {
                         $successCount++
+                        $movedIds += $item.Id
                     }
                 }
                 
                 Write-Success "$successCount message(s) moved to Junk"
-                Invoke-ListMessages
+                
+                # Refresh list without reloading (preserves NextLink for filters)
+                Invoke-RefreshMessageList -DeletedMessageIds $movedIds
             }
         }
         "INBOX" {
@@ -353,17 +362,21 @@ while ($true) {
             
             if (Confirm-Action $confirmMsg) {
                 $successCount = 0
+                $movedIds = @()
                 foreach ($entry in $items) {
                     $item = $entry.Item
                     if (Move-Message `
                         -MessageId $item.Id `
                         -DestinationFolderId $Config.Folders.Inbox) {
                         $successCount++
+                        $movedIds += $item.Id
                     }
                 }
                 
                 Write-Success "$successCount message(s) moved to Inbox"
-                Invoke-ListMessages
+                
+                # Refresh list without reloading (preserves NextLink for filters)
+                Invoke-RefreshMessageList -DeletedMessageIds $movedIds
             }
         }
         "RESTORE" {
@@ -429,17 +442,21 @@ while ($true) {
             
             if (Confirm-Action $confirmMsg) {
                 $successCount = 0
+                $restoredIds = @()
                 foreach ($entry in $items) {
                     $item = $entry.Item
                     if (Move-Message `
                         -MessageId $item.Id `
                         -DestinationFolderId $Config.Folders.Inbox) {
                         $successCount++
+                        $restoredIds += $item.Id
                     }
                 }
                 
                 Write-Success "$successCount message(s) restored to Inbox"
-                Invoke-ListMessages
+                
+                # Refresh list without reloading (preserves NextLink for filters)
+                Invoke-RefreshMessageList -DeletedMessageIds $restoredIds
             }
         }
         "PURGE" {
@@ -505,15 +522,19 @@ while ($true) {
             
             if (Confirm-Action $confirmMsg) {
                 $successCount = 0
+                $purgedIds = @()
                 foreach ($entry in $items) {
                     $item = $entry.Item
                     if (Remove-Message -MessageId $item.Id) {
                         $successCount++
+                        $purgedIds += $item.Id
                     }
                 }
                 
                 Write-Success "$successCount message(s) deleted permanently"
-                Invoke-ListMessages
+                
+                # Refresh list without reloading (preserves NextLink for filters)
+                Invoke-RefreshMessageList -DeletedMessageIds $purgedIds
             }
         }
         "NEW" {

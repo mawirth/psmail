@@ -126,8 +126,12 @@ function Invoke-ListMore {
     # Update next link
     $global:State.NextLink = $result.NextLink
     
+    # Store starting index for new messages
+    $startIndex = $global:State.Items.Count + 1
+    
     # Append messages
-    $index = $global:State.Items.Count + 1
+    $index = $startIndex
+    $newItems = @()
     foreach ($msg in $result.Messages) {
         $item = @{
             Index = $index
@@ -150,8 +154,100 @@ function Invoke-ListMore {
         }
         
         Add-StateItem $item
+        $newItems += $item
         $index++
     }
+    
+    # Display only new messages
+    Write-Host ""
+    Write-Host "Loaded $($newItems.Count) more message(s):" -ForegroundColor Cyan
+    Write-Host ""
+    
+    # Show header for new messages
+    $view = $global:State.View
+    if ($view -eq "inbox") {
+        Write-Host "#  U S A  Date              From               " `
+            -NoNewline
+        Write-Host "Subject" -ForegroundColor DarkGray
+    } else {
+        Write-Host "#  U A  Date              " `
+            -NoNewline
+        
+        if ($view -eq "sentitems" -or $view -eq "drafts") {
+            Write-Host "To                 " -NoNewline
+        } else {
+            Write-Host "From               " -NoNewline
+        }
+        
+        Write-Host "Subject" -ForegroundColor DarkGray
+    }
+    
+    # Display only new items
+    foreach ($item in $newItems) {
+        $isUnread = -not $item.IsRead
+        $unreadIcon = Get-UnreadIcon $isUnread
+        $date = Format-DateTime $item.DateTime
+        
+        # Index and unread
+        Write-Host ("{0,-2} " -f $item.Index) -NoNewline
+        Write-Host "$unreadIcon " -NoNewline
+        
+        # S/MIME icon (inbox only)
+        if ($view -eq "inbox") {
+            $smimeIcon = Get-SmimeIcon $item.SmimeStatus
+            Write-Host "$smimeIcon " -NoNewline
+        }
+        
+        # Attachment indicator
+        $attachIcon = if ($item.HasAttachments) { "*" } else { " " }
+        Write-Host "$attachIcon  " -NoNewline
+        
+        # Date
+        Write-Host "$date  " -NoNewline
+        
+        # From/To
+        $addr = if ($view -eq "sentitems" -or $view -eq "drafts") { 
+            $item.ToAddress 
+        } else { 
+            $item.FromAddress 
+        }
+        $addrTrunc = Truncate-String $addr 18
+        Write-Host ("{0,-18} " -f $addrTrunc) -NoNewline
+        
+        # Get console width for subject
+        $consoleWidth = $Host.UI.RawUI.WindowSize.Width
+        if ($consoleWidth -le 0) { $consoleWidth = 80 }
+        $fixedWidth = if ($view -eq "inbox") { 26 + 20 } else { 23 + 20 }
+        $subjectWidth = [Math]::Max(30, $consoleWidth - $fixedWidth - 5)
+        
+        # Subject
+        $subject = Truncate-String $item.Subject $subjectWidth
+        Write-Host $subject
+    }
+    
+    # Show pagination info if more available
+    if ($global:State.NextLink) {
+        Write-Host ""
+        Write-Host "[M] More messages available" -ForegroundColor DarkGray
+    }
+    
+    Write-Host ""
+    Write-Host "Total: $($global:State.Items.Count) message(s) loaded" -ForegroundColor DarkGray
+}
+
+function Invoke-RefreshMessageList {
+    <#
+    .SYNOPSIS
+    Refresh the message list display without reloading from server
+    Used after deleting messages to preserve NextLink for filters
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [array]$DeletedMessageIds
+    )
+    
+    # Remove deleted items from state and re-index
+    Remove-StateItems -MessageIds $DeletedMessageIds
     
     # Display updated list
     Show-CurrentView
