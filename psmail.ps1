@@ -221,16 +221,72 @@ while ($true) {
                 continue
             }
             if (-not $arg) {
-                Write-Error-Message "Usage: K <number>"
+                Write-Error-Message "Usage: K <number> or K <start>-<end>"
                 continue
             }
-            $index = [int]$arg
-            $item = Get-StateItem $index
-            if ($item) {
-                $null = Move-Message `
-                    -MessageId $item.Id `
-                    -DestinationFolderId $Config.Folders.Junk
-                Write-Success "Message moved to Junk"
+            
+            # Parse argument - could be single number or range
+            $indices = Parse-IndexRange $arg
+            
+            if (-not $indices) {
+                Write-Error-Message "Invalid index or range: $arg"
+                continue
+            }
+            
+            # Validate all indices
+            $items = @()
+            foreach ($index in $indices) {
+                $item = Get-StateItem $index
+                if (-not $item) {
+                    Write-Error-Message "Invalid message number: $index"
+                    continue
+                }
+                $items += @{ Index = $index; Item = $item }
+            }
+            
+            if ($items.Count -eq 0) {
+                continue
+            }
+            
+            # Show message details before moving to junk
+            Write-Host ""
+            if ($items.Count -eq 1) {
+                Write-Host "Move this message to Junk?" `
+                    -ForegroundColor Yellow
+            } else {
+                Write-Host "Move these $($items.Count) messages to Junk?" `
+                    -ForegroundColor Yellow
+            }
+            
+            foreach ($entry in $items) {
+                $index = $entry.Index
+                $item = $entry.Item
+                $date = Format-DateTime $item.DateTime
+                Write-Host "  #$index  $date  $($item.FromAddress)" `
+                    -ForegroundColor Cyan
+                Write-Host "  Subject: $($item.Subject)" `
+                    -ForegroundColor Cyan
+            }
+            Write-Host ""
+            
+            $confirmMsg = if ($items.Count -eq 1) { 
+                "Confirm move to Junk" 
+            } else { 
+                "Confirm move all to Junk" 
+            }
+            
+            if (Confirm-Action $confirmMsg) {
+                $successCount = 0
+                foreach ($entry in $items) {
+                    $item = $entry.Item
+                    if (Move-Message `
+                        -MessageId $item.Id `
+                        -DestinationFolderId $Config.Folders.Junk) {
+                        $successCount++
+                    }
+                }
+                
+                Write-Success "$successCount message(s) moved to Junk"
                 Invoke-ListMessages
             }
         }
@@ -241,16 +297,72 @@ while ($true) {
                 continue
             }
             if (-not $arg) {
-                Write-Error-Message "Usage: INBOX <number>"
+                Write-Error-Message "Usage: INBOX <number> or INBOX <start>-<end>"
                 continue
             }
-            $index = [int]$arg
-            $item = Get-StateItem $index
-            if ($item) {
-                $null = Move-Message `
-                    -MessageId $item.Id `
-                    -DestinationFolderId $Config.Folders.Inbox
-                Write-Success "Message moved to Inbox"
+            
+            # Parse argument - could be single number or range
+            $indices = Parse-IndexRange $arg
+            
+            if (-not $indices) {
+                Write-Error-Message "Invalid index or range: $arg"
+                continue
+            }
+            
+            # Validate all indices
+            $items = @()
+            foreach ($index in $indices) {
+                $item = Get-StateItem $index
+                if (-not $item) {
+                    Write-Error-Message "Invalid message number: $index"
+                    continue
+                }
+                $items += @{ Index = $index; Item = $item }
+            }
+            
+            if ($items.Count -eq 0) {
+                continue
+            }
+            
+            # Show message details before moving to inbox
+            Write-Host ""
+            if ($items.Count -eq 1) {
+                Write-Host "Move this message to Inbox?" `
+                    -ForegroundColor Yellow
+            } else {
+                Write-Host "Move these $($items.Count) messages to Inbox?" `
+                    -ForegroundColor Yellow
+            }
+            
+            foreach ($entry in $items) {
+                $index = $entry.Index
+                $item = $entry.Item
+                $date = Format-DateTime $item.DateTime
+                Write-Host "  #$index  $date  $($item.FromAddress)" `
+                    -ForegroundColor Cyan
+                Write-Host "  Subject: $($item.Subject)" `
+                    -ForegroundColor Cyan
+            }
+            Write-Host ""
+            
+            $confirmMsg = if ($items.Count -eq 1) { 
+                "Confirm move to Inbox" 
+            } else { 
+                "Confirm move all to Inbox" 
+            }
+            
+            if (Confirm-Action $confirmMsg) {
+                $successCount = 0
+                foreach ($entry in $items) {
+                    $item = $entry.Item
+                    if (Move-Message `
+                        -MessageId $item.Id `
+                        -DestinationFolderId $Config.Folders.Inbox) {
+                        $successCount++
+                    }
+                }
+                
+                Write-Success "$successCount message(s) moved to Inbox"
                 Invoke-ListMessages
             }
         }
@@ -261,16 +373,72 @@ while ($true) {
                 continue
             }
             if (-not $arg) {
-                Write-Error-Message "Usage: RESTORE <number>"
+                Write-Error-Message "Usage: RESTORE <number> or RESTORE <start>-<end>"
                 continue
             }
-            $index = [int]$arg
-            $item = Get-StateItem $index
-            if ($item) {
-                $null = Move-Message `
-                    -MessageId $item.Id `
-                    -DestinationFolderId $Config.Folders.Inbox
-                Write-Success "Message restored to Inbox"
+            
+            # Parse argument - could be single number or range
+            $indices = Parse-IndexRange $arg
+            
+            if (-not $indices) {
+                Write-Error-Message "Invalid index or range: $arg"
+                continue
+            }
+            
+            # Validate all indices
+            $items = @()
+            foreach ($index in $indices) {
+                $item = Get-StateItem $index
+                if (-not $item) {
+                    Write-Error-Message "Invalid message number: $index"
+                    continue
+                }
+                $items += @{ Index = $index; Item = $item }
+            }
+            
+            if ($items.Count -eq 0) {
+                continue
+            }
+            
+            # Show message details before restoring
+            Write-Host ""
+            if ($items.Count -eq 1) {
+                Write-Host "Restore this message to Inbox?" `
+                    -ForegroundColor Yellow
+            } else {
+                Write-Host "Restore these $($items.Count) messages to Inbox?" `
+                    -ForegroundColor Yellow
+            }
+            
+            foreach ($entry in $items) {
+                $index = $entry.Index
+                $item = $entry.Item
+                $date = Format-DateTime $item.DateTime
+                Write-Host "  #$index  $date  $($item.FromAddress)" `
+                    -ForegroundColor Cyan
+                Write-Host "  Subject: $($item.Subject)" `
+                    -ForegroundColor Cyan
+            }
+            Write-Host ""
+            
+            $confirmMsg = if ($items.Count -eq 1) { 
+                "Confirm restore" 
+            } else { 
+                "Confirm restore all" 
+            }
+            
+            if (Confirm-Action $confirmMsg) {
+                $successCount = 0
+                foreach ($entry in $items) {
+                    $item = $entry.Item
+                    if (Move-Message `
+                        -MessageId $item.Id `
+                        -DestinationFolderId $Config.Folders.Inbox) {
+                        $successCount++
+                    }
+                }
+                
+                Write-Success "$successCount message(s) restored to Inbox"
                 Invoke-ListMessages
             }
         }
@@ -281,28 +449,71 @@ while ($true) {
                 continue
             }
             if (-not $arg) {
-                Write-Error-Message "Usage: PURGE <number>"
+                Write-Error-Message "Usage: PURGE <number> or PURGE <start>-<end>"
                 continue
             }
-            $index = [int]$arg
-            $item = Get-StateItem $index
-            if ($item) {
-                # Show message details before purge
-                Write-Host ""
+            
+            # Parse argument - could be single number or range
+            $indices = Parse-IndexRange $arg
+            
+            if (-not $indices) {
+                Write-Error-Message "Invalid index or range: $arg"
+                continue
+            }
+            
+            # Validate all indices
+            $items = @()
+            foreach ($index in $indices) {
+                $item = Get-StateItem $index
+                if (-not $item) {
+                    Write-Error-Message "Invalid message number: $index"
+                    continue
+                }
+                $items += @{ Index = $index; Item = $item }
+            }
+            
+            if ($items.Count -eq 0) {
+                continue
+            }
+            
+            # Show message details before purge
+            Write-Host ""
+            if ($items.Count -eq 1) {
                 Write-Host "Permanently delete this message?" `
                     -ForegroundColor Red
+            } else {
+                Write-Host "Permanently delete these $($items.Count) messages?" `
+                    -ForegroundColor Red
+            }
+            
+            foreach ($entry in $items) {
+                $index = $entry.Index
+                $item = $entry.Item
                 $date = Format-DateTime $item.DateTime
                 Write-Host "  #$index  $date  $($item.FromAddress)" `
                     -ForegroundColor Cyan
                 Write-Host "  Subject: $($item.Subject)" `
                     -ForegroundColor Cyan
-                Write-Host ""
-                
-                if (Confirm-Action "Confirm permanent delete") {
-                    $null = Remove-Message -MessageId $item.Id
-                    Write-Success "Message deleted permanently"
-                    Invoke-ListMessages
+            }
+            Write-Host ""
+            
+            $confirmMsg = if ($items.Count -eq 1) { 
+                "Confirm permanent delete" 
+            } else { 
+                "Confirm permanent delete all" 
+            }
+            
+            if (Confirm-Action $confirmMsg) {
+                $successCount = 0
+                foreach ($entry in $items) {
+                    $item = $entry.Item
+                    if (Remove-Message -MessageId $item.Id) {
+                        $successCount++
+                    }
                 }
+                
+                Write-Success "$successCount message(s) deleted permanently"
+                Invoke-ListMessages
             }
         }
         "NEW" {

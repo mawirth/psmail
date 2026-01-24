@@ -46,7 +46,7 @@ function Show-Menu {
         "inbox" {
             Write-Host "[L] List  [R #] Read  [X #/#-#] Delete  " `
                 -NoNewline
-            Write-Host "[K #] Junk" -ForegroundColor Yellow
+            Write-Host "[K #/#-#] Junk" -ForegroundColor Yellow
         }
         "drafts" {
             Write-Host "[L] List  [NEW] New  [E #] Edit  " `
@@ -59,12 +59,12 @@ function Show-Menu {
                 -ForegroundColor Yellow
         }
         "deleteditems" {
-            Write-Host "[L] List  [R #] Read  [RESTORE #]  " `
+            Write-Host "[L] List  [R #] Read  [RESTORE #/#-#]  " `
                 -NoNewline
-            Write-Host "[PURGE #]" -ForegroundColor Yellow
+            Write-Host "[PURGE #/#-#]" -ForegroundColor Yellow
         }
         "junkemail" {
-            Write-Host "[L] List  [R #] Read  [INBOX #]  " `
+            Write-Host "[L] List  [R #] Read  [INBOX #/#-#]  " `
                 -NoNewline
             Write-Host "[X #/#-#] Delete" -ForegroundColor Yellow
         }
