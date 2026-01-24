@@ -101,6 +101,60 @@ function Resolve-FilePath {
     }
 }
 
+function Parse-IndexRange {
+    <#
+    .SYNOPSIS
+    Parse index input - supports single number ("3") or range ("2-5")
+    
+    .DESCRIPTION
+    Parses user input for message indices and returns array of all indices.
+    Supports both single numbers and ranges (e.g., "2-5" returns 2,3,4,5).
+    
+    .PARAMETER InputString
+    The input string containing either a single number or a range
+    
+    .EXAMPLE
+    Parse-IndexRange "3" returns @(3)
+    Parse-IndexRange "2-5" returns @(2,3,4,5)
+    #>
+    param([string]$InputString)
+    
+    if ([string]::IsNullOrWhiteSpace($InputString)) {
+        return $null
+    }
+    
+    $InputString = $InputString.Trim()
+    
+    # Check if it's a range (contains "-")
+    if ($InputString -match '^(\d+)-(\d+)$') {
+        $start = [int]$matches[1]
+        $end = [int]$matches[2]
+        
+        # Validate range
+        if ($start -lt 1 -or $end -lt 1) {
+            return $null
+        }
+        
+        if ($start -gt $end) {
+            # Swap if user entered reversed range
+            $temp = $start
+            $start = $end
+            $end = $temp
+        }
+        
+        # Generate array of indices
+        return @($start..$end)
+    }
+    # Check if it's a single number
+    elseif ($InputString -match '^\d+$') {
+        return @([int]$InputString)
+    }
+    else {
+        # Invalid format
+        return $null
+    }
+}
+
 function Format-WordWrap {
     <#
     .SYNOPSIS

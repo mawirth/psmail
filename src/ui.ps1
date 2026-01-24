@@ -15,7 +15,7 @@ function Get-OptimalPageSize {
     # - Header (4 lines: 2 blank lines, title, separator line)
     # - Column header (1 line: "#  U S A  Date...")
     # - Menu section (7 lines: blank, separator, 4 menu lines, prompt)
-    # - Pagination info (2 lines if present: blank, "[MORE]...")
+    # - Pagination info (2 lines if present: blank, "[M]...")
     # - Filter indicator (2 lines if active: "[Filter...]", blank)
     # - Safety margin (1 line)
     $reservedLines = 17
@@ -44,29 +44,29 @@ function Show-Menu {
     # View-specific commands
     switch ($view) {
         "inbox" {
-            Write-Host "[L] List  [O #] Open  [X #] Delete  " `
+            Write-Host "[L] List  [R #] Read  [X #/#-#] Delete  " `
                 -NoNewline
             Write-Host "[K #] Junk" -ForegroundColor Yellow
         }
         "drafts" {
             Write-Host "[L] List  [NEW] New  [E #] Edit  " `
                 -NoNewline
-            Write-Host "[SEND #] Send  [X #] Delete" `
+            Write-Host "[SEND #] Send  [X #/#-#] Delete" `
                 -ForegroundColor Yellow
         }
         "sentitems" {
-            Write-Host "[L] List  [O #] Open  [REDRAFT #]" `
+            Write-Host "[L] List  [R #] Read  [REDRAFT #]" `
                 -ForegroundColor Yellow
         }
         "deleteditems" {
-            Write-Host "[L] List  [O #] Open  [RESTORE #]  " `
+            Write-Host "[L] List  [R #] Read  [RESTORE #]  " `
                 -NoNewline
             Write-Host "[PURGE #]" -ForegroundColor Yellow
         }
         "junkemail" {
-            Write-Host "[L] List  [O #] Open  [INBOX #]  " `
+            Write-Host "[L] List  [R #] Read  [INBOX #]  " `
                 -NoNewline
-            Write-Host "[X #] Delete" -ForegroundColor Yellow
+            Write-Host "[X #/#-#] Delete" -ForegroundColor Yellow
         }
     }
     
@@ -212,7 +212,7 @@ function Show-MessageList {
     # Pagination info
     if ($global:State.NextLink) {
         Write-Host ""
-        Write-Host "[MORE] More messages available" `
+        Write-Host "[M] More messages available" `
             -ForegroundColor DarkGray
     }
 }

@@ -115,12 +115,12 @@ while ($true) {
         "L" {
             Invoke-ListMessages
         }
-        "MORE" {
+        "M" {
             Invoke-ListMore
         }
-        "O" {
+        "R" {
             if (-not $arg) {
-                Write-Error-Message "Usage: O <number>"
+                Write-Error-Message "Usage: R <number>"
                 continue
             }
             $index = [int]$arg
@@ -128,16 +128,46 @@ while ($true) {
         }
         "X" {
             if (-not $arg) {
-                Write-Error-Message "Usage: X <number>"
+                Write-Error-Message "Usage: X <number> or X <start>-<end>"
                 continue
             }
-            $index = [int]$arg
-            $item = Get-StateItem $index
-            if ($item) {
-                # Show message details before delete
-                Write-Host ""
+            
+            # Parse argument - could be single number or range
+            $indices = Parse-IndexRange $arg
+            
+            if (-not $indices) {
+                Write-Error-Message "Invalid index or range: $arg"
+                continue
+            }
+            
+            # Validate all indices
+            $items = @()
+            foreach ($index in $indices) {
+                $item = Get-StateItem $index
+                if (-not $item) {
+                    Write-Error-Message "Invalid message number: $index"
+                    continue
+                }
+                $items += @{ Index = $index; Item = $item }
+            }
+            
+            if ($items.Count -eq 0) {
+                continue
+            }
+            
+            # Show message details before delete
+            Write-Host ""
+            if ($items.Count -eq 1) {
                 Write-Host "Delete this message?" `
                     -ForegroundColor Yellow
+            } else {
+                Write-Host "Delete these $($items.Count) messages?" `
+                    -ForegroundColor Yellow
+            }
+            
+            foreach ($entry in $items) {
+                $index = $entry.Index
+                $item = $entry.Item
                 $date = Format-DateTime $item.DateTime
                 $from = if ($view -eq "sentitems") {
                     $item.ToAddress
@@ -148,22 +178,40 @@ while ($true) {
                     -ForegroundColor Cyan
                 Write-Host "  Subject: $($item.Subject)" `
                     -ForegroundColor Cyan
-                Write-Host ""
-                
-                if (Confirm-Action "Confirm delete") {
+            }
+            Write-Host ""
+            
+            $confirmMsg = if ($items.Count -eq 1) { 
+                "Confirm delete" 
+            } else { 
+                "Confirm delete all" 
+            }
+            
+            if (Confirm-Action $confirmMsg) {
+                $successCount = 0
+                foreach ($entry in $items) {
+                    $item = $entry.Item
                     if ($view -eq "deleteditems") {
                         # Hard delete (purge)
-                        $null = Remove-Message -MessageId $item.Id
-                        Write-Success "Message deleted permanently"
+                        if (Remove-Message -MessageId $item.Id) {
+                            $successCount++
+                        }
                     } else {
                         # Move to deleted
-                        $null = Move-Message `
+                        if (Move-Message `
                             -MessageId $item.Id `
-                            -DestinationFolderId $Config.Folders.Deleted
-                        Write-Success "Message moved to Deleted"
+                            -DestinationFolderId $Config.Folders.Deleted) {
+                            $successCount++
+                        }
                     }
-                    Invoke-ListMessages
                 }
+                
+                if ($view -eq "deleteditems") {
+                    Write-Success "$successCount message(s) deleted permanently"
+                } else {
+                    Write-Success "$successCount message(s) moved to Deleted"
+                }
+                Invoke-ListMessages
             }
         }
         "K" {
