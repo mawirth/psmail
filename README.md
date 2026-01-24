@@ -108,7 +108,7 @@ On first run, you will be prompted to:
 
 ### Bulk Operations (Range Support)
 
-Many commands support bulk operations using ranges:
+Many commands support bulk operations using various input formats:
 
 **Single message:**
 ```
@@ -128,7 +128,31 @@ Deletes messages #2, #3, #4, and #5
 ```
 Same as `X 2-5` - automatically sorts the range
 
-**Commands supporting ranges:**
+**Comma-separated list:**
+```
+> X 3,1,5
+```
+Deletes messages #1, #3, and #5 (automatically sorted and deduplicated)
+
+**Mixed ranges and lists:**
+```
+> X 1,3-5,7
+```
+Deletes messages #1, #3, #4, #5, and #7
+
+**With spaces (optional):**
+```
+> X 3, 1, 5
+```
+Spaces around commas are automatically handled
+
+**Duplicate handling:**
+```
+> X 3,5,3,1
+```
+Duplicates are automatically removed - deletes #1, #3, #5
+
+**Commands supporting bulk operations:**
 - `X` - Delete/move to deleted in all folders
 - `K` - Move to Junk (from Inbox)
 - `INBOX` - Move to Inbox (from Junk)

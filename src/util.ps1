@@ -104,18 +104,27 @@ function Resolve-FilePath {
 function Parse-IndexRange {
     <#
     .SYNOPSIS
-    Parse index input - supports single number ("3") or range ("2-5")
+    Parse index input - supports numbers, ranges, and comma-separated lists
     
     .DESCRIPTION
-    Parses user input for message indices and returns array of all indices.
-    Supports both single numbers and ranges (e.g., "2-5" returns 2,3,4,5).
+    Parses user input for message indices and returns array of unique indices.
+    Supports:
+    - Single numbers: "3" returns @(3)
+    - Ranges: "2-5" returns @(2,3,4,5)
+    - Reversed ranges: "5-2" returns @(2,3,4,5)
+    - Comma-separated lists: "3,1,5" returns @(1,3,5)
+    - Mixed: "1,3-5,2" returns @(1,2,3,4,5)
+    - Duplicates are automatically removed
     
     .PARAMETER InputString
-    The input string containing either a single number or a range
+    The input string containing numbers, ranges, or comma-separated combinations
     
     .EXAMPLE
     Parse-IndexRange "3" returns @(3)
     Parse-IndexRange "2-5" returns @(2,3,4,5)
+    Parse-IndexRange "3,1,5" returns @(1,3,5)
+    Parse-IndexRange "1,3-5,2" returns @(1,2,3,4,5)
+    Parse-IndexRange "5,3,5,1" returns @(1,3,5) - duplicates removed
     #>
     param([string]$InputString)
     
@@ -125,8 +134,51 @@ function Parse-IndexRange {
     
     $InputString = $InputString.Trim()
     
-    # Check if it's a range (contains "-")
-    if ($InputString -match '^(\d+)-(\d+)$') {
+    # Collection for all indices
+    $allIndices = @()
+    
+    # Check if input contains comma (list of items)
+    if ($InputString -match ',') {
+        # Split by comma and process each part
+        $parts = $InputString -split ',' | ForEach-Object { $_.Trim() }
+        
+        foreach ($part in $parts) {
+            if ([string]::IsNullOrWhiteSpace($part)) {
+                continue
+            }
+            
+            # Check if part is a range
+            if ($part -match '^(\d+)-(\d+)$') {
+                $start = [int]$matches[1]
+                $end = [int]$matches[2]
+                
+                # Validate range
+                if ($start -lt 1 -or $end -lt 1) {
+                    return $null
+                }
+                
+                if ($start -gt $end) {
+                    # Swap if reversed
+                    $temp = $start
+                    $start = $end
+                    $end = $temp
+                }
+                
+                # Add all indices in range
+                $allIndices += @($start..$end)
+            }
+            # Check if part is a single number
+            elseif ($part -match '^\d+$') {
+                $allIndices += [int]$part
+            }
+            else {
+                # Invalid format in list
+                return $null
+            }
+        }
+    }
+    # Check if it's a single range (contains "-")
+    elseif ($InputString -match '^(\d+)-(\d+)$') {
         $start = [int]$matches[1]
         $end = [int]$matches[2]
         
@@ -143,16 +195,21 @@ function Parse-IndexRange {
         }
         
         # Generate array of indices
-        return @($start..$end)
+        $allIndices = @($start..$end)
     }
     # Check if it's a single number
     elseif ($InputString -match '^\d+$') {
-        return @([int]$InputString)
+        $allIndices = @([int]$InputString)
     }
     else {
         # Invalid format
         return $null
     }
+    
+    # Remove duplicates and sort
+    $uniqueIndices = $allIndices | Select-Object -Unique | Sort-Object
+    
+    return @($uniqueIndices)
 }
 
 function Format-WordWrap {

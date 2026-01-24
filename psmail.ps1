@@ -128,7 +128,7 @@ while ($true) {
         }
         "X" {
             if (-not $arg) {
-                Write-Error-Message "Usage: X <number> or X <start>-<end>"
+                Write-Error-Message "Usage: X <#>, X <#-#>, or X <#,#,#>"
                 continue
             }
             
@@ -221,7 +221,7 @@ while ($true) {
                 continue
             }
             if (-not $arg) {
-                Write-Error-Message "Usage: K <number> or K <start>-<end>"
+                Write-Error-Message "Usage: K <#>, K <#-#>, or K <#,#,#>"
                 continue
             }
             
@@ -297,7 +297,7 @@ while ($true) {
                 continue
             }
             if (-not $arg) {
-                Write-Error-Message "Usage: INBOX <number> or INBOX <start>-<end>"
+                Write-Error-Message "Usage: INBOX <#>, INBOX <#-#>, or INBOX <#,#,#>"
                 continue
             }
             
@@ -373,7 +373,7 @@ while ($true) {
                 continue
             }
             if (-not $arg) {
-                Write-Error-Message "Usage: RESTORE <number> or RESTORE <start>-<end>"
+                Write-Error-Message "Usage: RESTORE <#>, RESTORE <#-#>, or RESTORE <#,#,#>"
                 continue
             }
             
@@ -449,7 +449,7 @@ while ($true) {
                 continue
             }
             if (-not $arg) {
-                Write-Error-Message "Usage: PURGE <number> or PURGE <start>-<end>"
+                Write-Error-Message "Usage: PURGE <#>, PURGE <#-#>, or PURGE <#,#,#>"
                 continue
             }
             
