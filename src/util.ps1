@@ -51,7 +51,6 @@ function Write-Header {
     param([string]$Text)
     
     Write-Host ""
-    Write-Host ""
     Write-Host $Text -ForegroundColor Cyan
     Write-Host ("-" * $Text.Length) -ForegroundColor DarkGray
 }

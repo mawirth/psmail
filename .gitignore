@@ -24,6 +24,9 @@ data/footer.html
 # PowerShell temporary files
 *.tmp
 
+# AI Assistant context (not public)
+WARP.md
+
 # OS files
 .DS_Store
 Thumbs.db

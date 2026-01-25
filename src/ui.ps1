@@ -143,11 +143,11 @@ function Get-OptimalPageSize {
     # Count reserved lines (all non-message UI elements):
     # 
     # Header section:
-    #   - 2 blank lines at top
+    #   - 1 blank line at top
     #   - 1 folder title line (e.g., "Inbox")
     #   - 1 separator line (dashes)
     #   - 1 column header line ("#  U S A  Date...")
-    # = 5 lines
+    # = 4 lines
     # 
     # Footer/Menu section:
     #   - 1 blank line before menu
@@ -165,9 +165,9 @@ function Get-OptimalPageSize {
     # 
     # Safety margin: 1 line
     # 
-    # Total: 5 + 8 + 4 + 1 = 18 lines
+    # Total: 4 + 8 + 4 + 1 = 17 lines
     
-    $reservedLines = 18
+    $reservedLines = 17
     
     # Calculate available lines for messages
     $availableLines = $consoleHeight - $reservedLines
