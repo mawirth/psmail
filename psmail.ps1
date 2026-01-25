@@ -8,9 +8,16 @@ psmail - Console email client for Outlook.com using Microsoft Graph
 .DESCRIPTION
 Draft-first email workflow with nvim integration and S/MIME support
 
+.PARAMETER Version
+Display version information and exit
+
 .NOTES
 Requires PowerShell 7+
 #>
+
+param(
+    [switch]$Version
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -23,6 +30,16 @@ $ScriptRoot = $PSScriptRoot
 
 # Dot-source all modules
 . "$ScriptRoot\src\config.ps1"
+
+# Handle -Version flag
+if ($Version) {
+    Write-Host ""
+    Write-Host "psmail v$($Config.Version)" -ForegroundColor Cyan
+    Write-Host "PowerShell Console Mail Client for Outlook.com" -ForegroundColor Gray
+    Write-Host $Config.GitHubUrl -ForegroundColor Gray
+    Write-Host ""
+    exit 0
+}
 . "$ScriptRoot\src\util.ps1"
 . "$ScriptRoot\src\state.ps1"
 . "$ScriptRoot\src\auth.ps1"
