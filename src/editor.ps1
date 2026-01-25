@@ -48,7 +48,7 @@ function Edit-DraftInEditor {
         
     } catch {
         Write-Error-Message "Failed to launch editor: $($_.Exception.Message)"
-        Write-Host "Debug: Editor=$($Config.Editor), TempFile=$tempFile" -ForegroundColor DarkGray
+        Write-Host "Debug: Editor=$($Config.Editor), TempFile=$tempFile" -ForegroundColor $Config.Colors.Info
         Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
         return @{
             Changed = $false

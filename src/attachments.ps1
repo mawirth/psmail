@@ -161,7 +161,7 @@ function Invoke-SaveAllAttachments {
     }
     
     Write-Host "Saving $($toSave.Count) attachment(s)..." `
-        -ForegroundColor Cyan
+        -ForegroundColor $Config.Colors.LoadingMore
     
     $saved = 0
     foreach ($attachment in $toSave) {
@@ -184,7 +184,7 @@ function Invoke-SaveAllAttachments {
         try {
             $bytes = [Convert]::FromBase64String($attData.contentBytes)
             [System.IO.File]::WriteAllBytes($targetPath, $bytes)
-            Write-Host "  $fileName" -ForegroundColor Green
+            Write-Host "  $fileName" -ForegroundColor $Config.Colors.Success
             $saved++
         } catch {
             Write-Error-Message "Failed to save $fileName"
@@ -228,7 +228,7 @@ function Show-Attachments {
     }
     
     if (-not $attachments -or $attachments.Count -eq 0) {
-        Write-Host "No attachments." -ForegroundColor DarkGray
+        Write-Host "No attachments." -ForegroundColor $Config.Colors.NoMessages
         return
     }
     
@@ -243,7 +243,7 @@ function Show-Attachments {
     })
     
     if ($attachments.Count -eq 0) {
-        Write-Host "No file attachments." -ForegroundColor DarkGray
+        Write-Host "No file attachments." -ForegroundColor $Config.Colors.NoMessages
         return
     }
     

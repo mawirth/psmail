@@ -60,7 +60,7 @@ function Render-MessageListHeader {
     if ($View -eq "inbox") {
         Write-Host "#  U S A  Date              From               " `
             -NoNewline
-        Write-Host "Subject" -ForegroundColor DarkGray
+        Write-Host "Subject" -ForegroundColor $Config.Colors.SubjectHeader
     } else {
         Write-Host "#  U A  Date              " `
             -NoNewline
@@ -71,7 +71,7 @@ function Render-MessageListHeader {
             Write-Host "From               " -NoNewline
         }
         
-        Write-Host "Subject" -ForegroundColor DarkGray
+        Write-Host "Subject" -ForegroundColor $Config.Colors.SubjectHeader
     }
 }
 
@@ -186,7 +186,7 @@ function Show-Menu {
     #>
     
     Write-Host ""
-    Write-Host ("-" * 70) -ForegroundColor DarkGray
+    Write-Host ("-" * 70) -ForegroundColor $Config.Colors.Separator
     
     $view = $global:State.View
     
@@ -195,44 +195,44 @@ function Show-Menu {
         "inbox" {
             Write-Host "[L] List  [R #] Read  [X #/#-#] Delete  " `
                 -NoNewline
-            Write-Host "[K #/#-#] Junk" -ForegroundColor Yellow
+            Write-Host "[K #/#-#] Junk" -ForegroundColor $Config.Colors.MenuAction
         }
         "drafts" {
             Write-Host "[L] List  [NEW] New  [E #] Edit  " `
                 -NoNewline
             Write-Host "[SEND #] Send  [X #/#-#] Delete" `
-                -ForegroundColor Yellow
+                -ForegroundColor $Config.Colors.MenuAction
         }
         "sentitems" {
             Write-Host "[L] List  [R #] Read  [REDRAFT #]  " `
                 -NoNewline
-            Write-Host "[X #/#-#] Delete" -ForegroundColor Yellow
+            Write-Host "[X #/#-#] Delete" -ForegroundColor $Config.Colors.MenuAction
         }
         "deleteditems" {
             Write-Host "[L] List  [R #] Read  [RESTORE #/#-#]  " `
                 -NoNewline
-            Write-Host "[PURGE #/#-#]" -ForegroundColor Yellow
+            Write-Host "[PURGE #/#-#]" -ForegroundColor $Config.Colors.MenuAction
         }
         "junkemail" {
             Write-Host "[L] List  [R #] Read  [INBOX #/#-#]  " `
                 -NoNewline
-            Write-Host "[X #/#-#] Delete" -ForegroundColor Yellow
+            Write-Host "[X #/#-#] Delete" -ForegroundColor $Config.Colors.MenuAction
         }
     }
     
     # Global commands
     Write-Host "[I] Inbox  [D] Drafts  [S] Sent  " `
-        -NoNewline -ForegroundColor DarkGray
+        -NoNewline -ForegroundColor $Config.Colors.MenuGlobal
     Write-Host "[G] Deleted  [J] Junk" `
-        -ForegroundColor DarkGray
+        -ForegroundColor $Config.Colors.MenuGlobal
     Write-Host "[FILTER <text>] Filter messages  " `
-        -NoNewline -ForegroundColor DarkGray
+        -NoNewline -ForegroundColor $Config.Colors.MenuGlobal
     Write-Host "[CLEAR] Clear filter" `
-        -ForegroundColor DarkGray
+        -ForegroundColor $Config.Colors.MenuGlobal
     Write-Host "[CONTACTS] Search contacts  " `
-        -NoNewline -ForegroundColor DarkGray
+        -NoNewline -ForegroundColor $Config.Colors.MenuGlobal
     Write-Host "[LOGOUT] Logout  [Q] Quit" `
-        -ForegroundColor DarkGray
+        -ForegroundColor $Config.Colors.MenuGlobal
     Write-Host ""
 }
 
@@ -242,7 +242,7 @@ function Read-Command {
     Read and parse user command
     #>
     
-    Write-Host "> " -NoNewline -ForegroundColor Green
+    Write-Host "> " -NoNewline -ForegroundColor $Config.Colors.Prompt
     $input = Read-Host
     
     if ([string]::IsNullOrWhiteSpace($input)) {
@@ -279,12 +279,12 @@ function Show-MessageList {
     # Show active filter if present
     $filterText = Get-Filter
     if ($filterText) {
-        Write-Host "[Filter active: '$filterText']" -ForegroundColor Yellow
+        Write-Host "[Filter active: '$filterText']" -ForegroundColor $Config.Colors.FilterActive
         Write-Host ""
     }
     
     if ($global:State.Items.Count -eq 0) {
-        Write-Host "No messages." -ForegroundColor DarkGray
+        Write-Host "No messages." -ForegroundColor $Config.Colors.NoMessages
         return
     }
     
@@ -303,7 +303,7 @@ function Show-MessageList {
     if ($global:State.NextLink) {
         Write-Host ""
         Write-Host "[M] More messages available" `
-            -ForegroundColor DarkGray
+            -ForegroundColor $Config.Colors.Info
     }
 }
 
@@ -311,7 +311,7 @@ function Confirm-Action {
     param([string]$Message)
     
     Write-Host "$Message (y/n): " `
-        -NoNewline -ForegroundColor Yellow
+        -NoNewline -ForegroundColor $Config.Colors.ConfirmWarning
     $response = Read-Host
     
     return ($response -eq "y" -or $response -eq "Y")

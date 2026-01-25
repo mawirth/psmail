@@ -393,6 +393,45 @@ Change number of messages per page in `src/config.ps1`:
 PageSize = 50  # Default is 20
 ```
 
+### Color Scheme
+
+All colors used in the UI are configurable in `src/config.ps1`. You can customize the color scheme by modifying the `Colors` section:
+
+```powershell
+Colors = @{
+    # Headers and titles
+    Header          = "Cyan"        # Main headers and separators
+    Separator       = "DarkGray"    # Separator lines
+    
+    # Messages and status
+    Success         = "Green"       # Success messages
+    Error           = "Red"         # Error messages
+    Warning         = "Yellow"      # Warning messages
+    Info            = "DarkGray"    # Info messages
+    
+    # List display
+    SubjectHeader   = "DarkGray"    # Column headers in message lists
+    FilterActive    = "Yellow"      # Active filter indicator
+    NoMessages      = "DarkGray"    # "No messages" text
+    LoadingMore     = "Cyan"        # Loading/progress messages
+    
+    # Menu and prompts
+    MenuAction      = "Yellow"      # Menu action items
+    MenuGlobal      = "DarkGray"    # Global navigation menu
+    Prompt          = "Green"       # Command prompt
+    
+    # Message details
+    MessageDetail   = "Cyan"        # Message details in confirmations
+    FieldLabel      = "DarkGray"    # Field labels (From, To, Subject, etc.)
+    
+    # Confirmations
+    ConfirmWarning  = "Yellow"      # Regular confirmation prompts
+    ConfirmDanger   = "Red"         # Dangerous action prompts (e.g. PURGE)
+}
+```
+
+Supported color values: `Black`, `DarkBlue`, `DarkGreen`, `DarkCyan`, `DarkRed`, `DarkMagenta`, `DarkYellow`, `Gray`, `DarkGray`, `Blue`, `Green`, `Cyan`, `Red`, `Magenta`, `Yellow`, `White`
+
 ## Authentication & Permissions
 
 psmail uses **device code flow** authentication via Microsoft Graph. On first

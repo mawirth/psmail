@@ -8,7 +8,7 @@ function Invoke-ContactSearch {
     #>
     
     Write-Host ""
-    Write-Host "Fetching contacts..." -ForegroundColor Cyan
+    Write-Host "Fetching contacts..." -ForegroundColor $Config.Colors.LoadingMore
     
     # Fetch contacts from Graph
     $contacts = Get-GraphContacts
@@ -18,10 +18,10 @@ function Invoke-ContactSearch {
         return
     }
     
-    Write-Host "Found $($contacts.Count) contacts" -ForegroundColor Green
+    Write-Host "Found $($contacts.Count) contacts" -ForegroundColor $Config.Colors.Success
     Write-Host ""
-    Write-Host "Enter search term (or press Enter to list all):" -ForegroundColor Cyan
-    Write-Host "> " -NoNewline -ForegroundColor Green
+    Write-Host "Enter search term (or press Enter to list all):" -ForegroundColor $Config.Colors.LoadingMore
+    Write-Host "> " -NoNewline -ForegroundColor $Config.Colors.Prompt
     $searchTerm = Read-Host
     
     # Filter contacts
@@ -45,12 +45,12 @@ function Invoke-ContactSearch {
     }
     
     if ($filtered.Count -eq 0) {
-        Write-Host "No contacts match '$searchTerm'" -ForegroundColor Yellow
+        Write-Host "No contacts match '$searchTerm'" -ForegroundColor $Config.Colors.Warning
         return
     }
     
     Write-Host ""
-    Write-Host "Matching contacts:" -ForegroundColor Cyan
+    Write-Host "Matching contacts:" -ForegroundColor $Config.Colors.LoadingMore
     Write-Host ""
     
     # Display contacts with index
@@ -72,13 +72,13 @@ function Invoke-ContactSearch {
         $formattedLine = "{0,3}. {1,-30} " `
             -f $index, $displayName
         Write-Host $formattedLine -NoNewline
-        Write-Host $emailAddr -ForegroundColor Green
+        Write-Host $emailAddr -ForegroundColor $Config.Colors.Success
         $index++
     }
     
     Write-Host ""
     Write-Host "Enter number to copy (or Q to cancel): " `
-        -NoNewline -ForegroundColor Cyan
+        -NoNewline -ForegroundColor $Config.Colors.LoadingMore
     $selection = Read-Host
     
     if ($selection -eq "Q" -or $selection -eq "q") {
@@ -124,7 +124,7 @@ function Get-GraphContacts {
     Build contact list from email history
     #>
     
-    Write-Host "Building contact list from recent emails..." -ForegroundColor DarkGray
+    Write-Host "Building contact list from recent emails..." -ForegroundColor $Config.Colors.Info
     
     try {
         # Collect unique email addresses from inbox and sent items

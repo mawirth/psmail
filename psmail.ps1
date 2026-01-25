@@ -34,9 +34,9 @@ $ScriptRoot = $PSScriptRoot
 # Handle -Version flag
 if ($Version) {
     Write-Host ""
-    Write-Host "psmail v$($Config.Version)" -ForegroundColor Cyan
-    Write-Host "PowerShell Console Mail Client for Outlook.com" -ForegroundColor Gray
-    Write-Host $Config.GitHubUrl -ForegroundColor Gray
+    Write-Host "psmail v$($Config.Version)" -ForegroundColor $Config.Colors.Header
+    Write-Host "PowerShell Console Mail Client for Outlook.com" -ForegroundColor $Config.Colors.Info
+    Write-Host $Config.GitHubUrl -ForegroundColor $Config.Colors.Info
     Write-Host ""
     exit 0
 }
@@ -59,7 +59,7 @@ Initialize-State
 # Connect to Graph
 Write-Host ""
 Write-Host "=== psmail - PowerShell Mail Client ===" `
-    -ForegroundColor Cyan
+    -ForegroundColor $Config.Colors.Header
 Write-Host ""
 
 if (-not (Connect-GraphMail)) {
@@ -182,10 +182,10 @@ while ($true) {
             Write-Host ""
             if ($items.Count -eq 1) {
                 Write-Host "Delete this message?" `
-                    -ForegroundColor Yellow
+                    -ForegroundColor $Config.Colors.ConfirmWarning
             } else {
                 Write-Host "Delete these $($items.Count) messages?" `
-                    -ForegroundColor Yellow
+                    -ForegroundColor $Config.Colors.ConfirmWarning
             }
             
             foreach ($entry in $items) {
@@ -198,9 +198,9 @@ while ($true) {
                     $item.FromAddress
                 }
                 Write-Host "  #$index  $date  $from" `
-                    -ForegroundColor Cyan
+                    -ForegroundColor $Config.Colors.MessageDetail
                 Write-Host "  Subject: $($item.Subject)" `
-                    -ForegroundColor Cyan
+                    -ForegroundColor $Config.Colors.MessageDetail
             }
             Write-Host ""
             
@@ -278,10 +278,10 @@ while ($true) {
             Write-Host ""
             if ($items.Count -eq 1) {
                 Write-Host "Move this message to Junk?" `
-                    -ForegroundColor Yellow
+                    -ForegroundColor $Config.Colors.ConfirmWarning
             } else {
                 Write-Host "Move these $($items.Count) messages to Junk?" `
-                    -ForegroundColor Yellow
+                    -ForegroundColor $Config.Colors.ConfirmWarning
             }
             
             foreach ($entry in $items) {
@@ -289,9 +289,9 @@ while ($true) {
                 $item = $entry.Item
                 $date = Format-DateTime $item.DateTime
                 Write-Host "  #$index  $date  $($item.FromAddress)" `
-                    -ForegroundColor Cyan
+                    -ForegroundColor $Config.Colors.MessageDetail
                 Write-Host "  Subject: $($item.Subject)" `
-                    -ForegroundColor Cyan
+                    -ForegroundColor $Config.Colors.MessageDetail
             }
             Write-Host ""
             
@@ -360,10 +360,10 @@ while ($true) {
             Write-Host ""
             if ($items.Count -eq 1) {
                 Write-Host "Move this message to Inbox?" `
-                    -ForegroundColor Yellow
+                    -ForegroundColor $Config.Colors.ConfirmWarning
             } else {
                 Write-Host "Move these $($items.Count) messages to Inbox?" `
-                    -ForegroundColor Yellow
+                    -ForegroundColor $Config.Colors.ConfirmWarning
             }
             
             foreach ($entry in $items) {
@@ -371,9 +371,9 @@ while ($true) {
                 $item = $entry.Item
                 $date = Format-DateTime $item.DateTime
                 Write-Host "  #$index  $date  $($item.FromAddress)" `
-                    -ForegroundColor Cyan
+                    -ForegroundColor $Config.Colors.MessageDetail
                 Write-Host "  Subject: $($item.Subject)" `
-                    -ForegroundColor Cyan
+                    -ForegroundColor $Config.Colors.MessageDetail
             }
             Write-Host ""
             
@@ -442,10 +442,10 @@ while ($true) {
             Write-Host ""
             if ($items.Count -eq 1) {
                 Write-Host "Restore this message to Inbox?" `
-                    -ForegroundColor Yellow
+                    -ForegroundColor $Config.Colors.ConfirmWarning
             } else {
                 Write-Host "Restore these $($items.Count) messages to Inbox?" `
-                    -ForegroundColor Yellow
+                    -ForegroundColor $Config.Colors.ConfirmWarning
             }
             
             foreach ($entry in $items) {
@@ -453,9 +453,9 @@ while ($true) {
                 $item = $entry.Item
                 $date = Format-DateTime $item.DateTime
                 Write-Host "  #$index  $date  $($item.FromAddress)" `
-                    -ForegroundColor Cyan
+                    -ForegroundColor $Config.Colors.MessageDetail
                 Write-Host "  Subject: $($item.Subject)" `
-                    -ForegroundColor Cyan
+                    -ForegroundColor $Config.Colors.MessageDetail
             }
             Write-Host ""
             
@@ -532,10 +532,10 @@ while ($true) {
             Write-Host ""
             if ($items.Count -eq 1) {
                 Write-Host "Permanently delete this message?" `
-                    -ForegroundColor Red
+                    -ForegroundColor $Config.Colors.ConfirmDanger
             } else {
                 Write-Host "Permanently delete these $($items.Count) messages?" `
-                    -ForegroundColor Red
+                    -ForegroundColor $Config.Colors.ConfirmDanger
             }
             
             foreach ($entry in $items) {
@@ -543,9 +543,9 @@ while ($true) {
                 $item = $entry.Item
                 $date = Format-DateTime $item.DateTime
                 Write-Host "  #$index  $date  $($item.FromAddress)" `
-                    -ForegroundColor Cyan
+                    -ForegroundColor $Config.Colors.MessageDetail
                 Write-Host "  Subject: $($item.Subject)" `
-                    -ForegroundColor Cyan
+                    -ForegroundColor $Config.Colors.MessageDetail
             }
             Write-Host ""
             

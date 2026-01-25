@@ -108,7 +108,7 @@ function Invoke-ListMessages {
     # Check if filter is active
     $filterText = Get-Filter
     if ($filterText) {
-        Write-Host "Applying filter: '$filterText'..." -ForegroundColor Cyan
+        Write-Host "Applying filter: '$filterText'..." -ForegroundColor $Config.Colors.LoadingMore
     }
     
     # Get messages (automatically handles filter vs normal)
@@ -122,9 +122,9 @@ function Invoke-ListMessages {
     if (-not $result.Messages -or $result.Messages.Count -eq 0) {
         Show-CurrentView
         if ($filterText) {
-            Write-Host "No messages match filter '$filterText'." -ForegroundColor Yellow
+            Write-Host "No messages match filter '$filterText'." -ForegroundColor $Config.Colors.Warning
         } else {
-            Write-Host "No messages." -ForegroundColor DarkGray
+            Write-Host "No messages." -ForegroundColor $Config.Colors.NoMessages
         }
         return
     }
@@ -157,7 +157,7 @@ function Invoke-ListMore {
     # Check if filter is active
     $filterText = Get-Filter
     if ($filterText) {
-        Write-Host "Loading more filtered messages..." -ForegroundColor Cyan
+        Write-Host "Loading more filtered messages..." -ForegroundColor $Config.Colors.LoadingMore
     }
     
     # Get messages (automatically handles filter vs normal)
@@ -181,7 +181,7 @@ function Invoke-ListMore {
     
     # Display only new messages
     Write-Host ""
-    Write-Host "Loaded $($newItems.Count) more message(s):" -ForegroundColor Cyan
+    Write-Host "Loaded $($newItems.Count) more message(s):" -ForegroundColor $Config.Colors.LoadingMore
     Write-Host ""
     
     # Show header for new messages
@@ -198,11 +198,11 @@ function Invoke-ListMore {
     # Show pagination info if more available
     if ($global:State.NextLink) {
         Write-Host ""
-        Write-Host "[M] More messages available" -ForegroundColor DarkGray
+        Write-Host "[M] More messages available" -ForegroundColor $Config.Colors.Info
     }
     
     Write-Host ""
-    Write-Host "Total: $($global:State.Items.Count) message(s) loaded" -ForegroundColor DarkGray
+    Write-Host "Total: $($global:State.Items.Count) message(s) loaded" -ForegroundColor $Config.Colors.Info
 }
 
 function Invoke-RefreshMessageList {
@@ -257,7 +257,7 @@ function Invoke-RefreshMessageList {
     
     # Show load message if we loaded new messages
     if ($loadedCount -gt 0) {
-        Write-Host "Loaded $loadedCount new message(s)" -ForegroundColor Green
+        Write-Host "Loaded $loadedCount new message(s)" -ForegroundColor $Config.Colors.Success
         Write-Host ""
     }
     

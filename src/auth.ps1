@@ -15,7 +15,7 @@ function Connect-GraphMail {
     
     if (-not $module -or $module.Version.Major -lt 2) {
         Write-Host "Installing/Updating $moduleName (v2+)..." `
-            -ForegroundColor Cyan
+            -ForegroundColor $Config.Colors.LoadingMore
         Install-Module Microsoft.Graph.Authentication `
             -Scope CurrentUser `
             -Force `
@@ -25,7 +25,7 @@ function Connect-GraphMail {
     Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
     
     Write-Host "Connecting to Microsoft Graph..." `
-        -ForegroundColor Cyan
+        -ForegroundColor $Config.Colors.LoadingMore
     
     try {
         # Try with consumers tenant first

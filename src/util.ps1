@@ -51,26 +51,26 @@ function Write-Header {
     param([string]$Text)
     
     Write-Host ""
-    Write-Host $Text -ForegroundColor Cyan
-    Write-Host ("-" * $Text.Length) -ForegroundColor DarkGray
+    Write-Host $Text -ForegroundColor $Config.Colors.Header
+    Write-Host ("-" * $Text.Length) -ForegroundColor $Config.Colors.Separator
 }
 
 function Write-Error-Message {
     param([string]$Message)
     
-    Write-Host "Error: $Message" -ForegroundColor Red
+    Write-Host "Error: $Message" -ForegroundColor $Config.Colors.Error
 }
 
 function Write-Success {
     param([string]$Message)
     
-    Write-Host $Message -ForegroundColor Green
+    Write-Host $Message -ForegroundColor $Config.Colors.Success
 }
 
 function Write-Info {
     param([string]$Message)
     
-    Write-Host $Message -ForegroundColor DarkGray
+    Write-Host $Message -ForegroundColor $Config.Colors.Info
 }
 
 function Resolve-FilePath {

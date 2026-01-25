@@ -96,14 +96,14 @@ $separator
     # Add attachments if any
     if ($resolvedAttachments.Count -gt 0) {
         Write-Host "Uploading $($resolvedAttachments.Count) attachment(s)..." `
-            -ForegroundColor Cyan
+            -ForegroundColor $Config.Colors.LoadingMore
         
         $uploadedCount = 0
         foreach ($filePath in $resolvedAttachments) {
             if (Add-AttachmentToDraft -MessageId $draft.id `
                 -FilePath $filePath) {
                 $fileName = [System.IO.Path]::GetFileName($filePath)
-                Write-Host "  $fileName" -ForegroundColor Green
+                Write-Host "  $fileName" -ForegroundColor $Config.Colors.Success
                 $uploadedCount++
             } else {
                 Write-Error-Message "Failed to upload: $filePath"
@@ -261,14 +261,14 @@ $bodyContent
     # Handle attachments if modified
     if ($resolvedAttachments.Count -gt 0) {
         Write-Host "Uploading $($resolvedAttachments.Count) attachment(s)..." `
-            -ForegroundColor Cyan
+            -ForegroundColor $Config.Colors.LoadingMore
         
         $uploadedCount = 0
         foreach ($filePath in $resolvedAttachments) {
             if (Add-AttachmentToDraft -MessageId $item.Id `
                 -FilePath $filePath) {
                 $fileName = [System.IO.Path]::GetFileName($filePath)
-                Write-Host "  $fileName" -ForegroundColor Green
+                Write-Host "  $fileName" -ForegroundColor $Config.Colors.Success
                 $uploadedCount++
             } else {
                 Write-Error-Message "Failed to upload: $filePath"
@@ -391,7 +391,7 @@ function Get-Footer {
                 Content = $content
             }
         } catch {
-            Write-Host "Warning: Could not read HTML footer" -ForegroundColor Yellow
+            Write-Host "Warning: Could not read HTML footer" -ForegroundColor $Config.Colors.Warning
         }
     }
     
@@ -601,7 +601,7 @@ function Invoke-RedraftMessage {
         
         if ($attachments -and $attachments.Count -gt 0) {
             Write-Host "Copying $($attachments.Count) attachment(s)..." `
-                -ForegroundColor Cyan
+                -ForegroundColor $Config.Colors.LoadingMore
             
             $copiedCount = 0
             foreach ($att in $attachments) {
@@ -615,7 +615,7 @@ function Invoke-RedraftMessage {
                     -SourceMessageId $item.Id `
                     -TargetMessageId $draft.id `
                     -Attachment $att) {
-                    Write-Host "  $($att.name)" -ForegroundColor Green
+                    Write-Host "  $($att.name)" -ForegroundColor $Config.Colors.Success
                     $copiedCount++
                 } else {
                     Write-Error-Message "Failed to copy: $($att.name)"

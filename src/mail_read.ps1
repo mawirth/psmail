@@ -25,17 +25,17 @@ function Invoke-OpenMessage {
     
     # Display header
     Write-Host ""
-    Write-Host ("=" * 70) -ForegroundColor Cyan
-    Write-Host "Subject: " -NoNewline -ForegroundColor DarkGray
+    Write-Host ("=" * 70) -ForegroundColor $Config.Colors.Header
+    Write-Host "Subject: " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
     Write-Host $msg.subject
-    Write-Host "From:    " -NoNewline -ForegroundColor DarkGray
+    Write-Host "From:    " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
     Write-Host ("{0} <{1}>" -f `
         $msg.from.emailAddress.name, `
         $msg.from.emailAddress.address)
     
     # To recipients
     if ($msg.toRecipients -and $msg.toRecipients.Count -gt 0) {
-        Write-Host "To:      " -NoNewline -ForegroundColor DarkGray
+        Write-Host "To:      " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
         $toList = $msg.toRecipients | ForEach-Object {
             if ($_.emailAddress.name) {
                 "{0} <{1}>" -f $_.emailAddress.name, `
@@ -49,7 +49,7 @@ function Invoke-OpenMessage {
     
     # Date
     $receivedDate = [datetime]$msg.receivedDateTime
-    Write-Host "Date:    " -NoNewline -ForegroundColor DarkGray
+    Write-Host "Date:    " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
     Write-Host (Format-DateTime $receivedDate)
     
     # S/MIME info
@@ -60,7 +60,7 @@ function Invoke-OpenMessage {
     # Attachments
     if ($msg.hasAttachments) {
         Write-Host ""
-        Write-Host "Attachments: " -NoNewline -ForegroundColor DarkGray
+        Write-Host "Attachments: " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
         $rawAttachments = Get-MessageAttachments -MessageId $item.Id
         
         # Check if it's a single attachment
@@ -98,13 +98,13 @@ function Invoke-OpenMessage {
         if ($fileAttachments) {
             Write-Host "$($fileAttachments.Count) file(s)"
             Write-Host "[SAVE #] Save attachment" `
-                -ForegroundColor Yellow
+                -ForegroundColor $Config.Colors.MenuAction
             Write-Host "[SAVEALL] Save all attachments" `
-                -ForegroundColor Yellow
+                -ForegroundColor $Config.Colors.MenuAction
         }
     }
     
-    Write-Host ("=" * 70) -ForegroundColor Cyan
+    Write-Host ("=" * 70) -ForegroundColor $Config.Colors.Header
     Write-Host ""
     
     # Body
@@ -152,8 +152,8 @@ function Invoke-OpenMessage {
     
     # Show reply/forward options
     Write-Host "[REPLY] Reply to sender  [REPLYALL] Reply to all  " `
-        -NoNewline -ForegroundColor Yellow
-    Write-Host "[FORWARD] Forward" -ForegroundColor Yellow
+        -NoNewline -ForegroundColor $Config.Colors.MenuAction
+    Write-Host "[FORWARD] Forward" -ForegroundColor $Config.Colors.MenuAction
     Write-Host ""
     
     # Mark as read if it was unread

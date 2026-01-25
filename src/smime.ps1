@@ -35,23 +35,23 @@ function Show-SmimeInfo {
     
     switch ($Status) {
         "SignedTrusted" {
-            Write-Host "Signature: " -NoNewline -ForegroundColor DarkGray
-            Write-Host "Trusted" -ForegroundColor Green
+            Write-Host "Signature: " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
+            Write-Host "Trusted" -ForegroundColor $Config.Colors.Success
             
             # Phase 2: Show actual certificate details
-            Write-Host "Signer:    " -NoNewline -ForegroundColor DarkGray
+            Write-Host "Signer:    " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
             Write-Host "(Not yet implemented)"
         }
         "SignedUntrusted" {
-            Write-Host "Signature: " -NoNewline -ForegroundColor DarkGray
-            Write-Host "Untrusted" -ForegroundColor Yellow
-            Write-Host "Reason:    " -NoNewline -ForegroundColor DarkGray
+            Write-Host "Signature: " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
+            Write-Host "Untrusted" -ForegroundColor $Config.Colors.Warning
+            Write-Host "Reason:    " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
             Write-Host "Certificate chain not trusted or revocation unavailable"
         }
         "SignedInvalid" {
-            Write-Host "Signature: " -NoNewline -ForegroundColor DarkGray
-            Write-Host "Invalid" -ForegroundColor Red
-            Write-Host "Reason:    " -NoNewline -ForegroundColor DarkGray
+            Write-Host "Signature: " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
+            Write-Host "Invalid" -ForegroundColor $Config.Colors.Error
+            Write-Host "Reason:    " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
             Write-Host "Signature verification failed or certificate expired"
         }
     }

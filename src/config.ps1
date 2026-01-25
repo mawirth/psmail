@@ -93,6 +93,38 @@ $script:Config = @{
         SignedUntrusted  = "SignedUntrusted"
         SignedInvalid    = "SignedInvalid"
     }
+    
+    # Color scheme for UI elements
+    Colors = @{
+        # Headers and titles
+        Header          = "Cyan"
+        Separator       = "DarkGray"
+        
+        # Messages and status
+        Success         = "Green"
+        Error           = "Red"
+        Warning         = "Yellow"
+        Info            = "DarkGray"
+        
+        # List display
+        SubjectHeader   = "DarkGray"
+        FilterActive    = "Yellow"
+        NoMessages      = "DarkGray"
+        LoadingMore     = "Cyan"
+        
+        # Menu and prompts
+        MenuAction      = "Yellow"
+        MenuGlobal      = "DarkGray"
+        Prompt          = "Green"
+        
+        # Message details
+        MessageDetail   = "Cyan"
+        FieldLabel      = "DarkGray"
+        
+        # Confirmations
+        ConfirmWarning  = "Yellow"
+        ConfirmDanger   = "Red"
+    }
 }
 
 # Make config globally accessible

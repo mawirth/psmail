@@ -13,9 +13,10 @@ PIXEL_SIZE = 15
 QUALITY = 95
 
 # Region definitions (x1, y1, x2, y2)
-PATH_HEADER = (0, 0, 2776, 120)  # Top path where "marti" appears
-FROM_COLUMN = (700, 280, 1140, 1140)  # Skip header row - entries only
-SUBJECT_COLUMN = (1160, 280, 2650, 1140)  # Skip header row - entries only
+# Adjusted for image size: 1998x1062
+# Only pixelate email addresses and subject content, not headers
+FROM_COLUMN = (539, 145, 875, 400)  # Email addresses only (all 6 rows)
+SUBJECT_COLUMN = (895, 145, 1998, 400)  # Subject lines only (all 6 rows)
 
 
 def pixelate_region(img_array, x1, y1, x2, y2, pixel_size=10):
@@ -84,7 +85,7 @@ def main():
         print(f"Error: Input file '{INPUT_FILE}' not found.")
         sys.exit(1)
     
-    regions = [PATH_HEADER, FROM_COLUMN, SUBJECT_COLUMN]
+    regions = [FROM_COLUMN, SUBJECT_COLUMN]
     
     try:
         output_path = process_image(
