@@ -33,8 +33,8 @@ $script:Config = @{
     
     # List pagination
     # PageSize will be calculated dynamically based on window height
-    # Minimum of 10 lines, leaving space for menu and UI elements
-    MinPageSize = 10
+    # Minimum of 1 lines, leaving space for menu and UI elements
+    MinPageSize = 1
     MaxPageSize = 50
     
     # Filter search limits
