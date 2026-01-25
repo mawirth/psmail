@@ -147,8 +147,8 @@ function Parse-IndexRange {
                 continue
             }
             
-            # Check if part is a range
-            if ($part -match '^(\d+)-(\d+)$') {
+            # Check if part is a range (with optional spaces around dash)
+            if ($part -match '^(\d+)\s*-\s*(\d+)$') {
                 $start = [int]$matches[1]
                 $end = [int]$matches[2]
                 
@@ -177,8 +177,8 @@ function Parse-IndexRange {
             }
         }
     }
-    # Check if it's a single range (contains "-")
-    elseif ($InputString -match '^(\d+)-(\d+)$') {
+    # Check if it's a single range (contains "-", with optional spaces)
+    elseif ($InputString -match '^(\d+)\s*-\s*(\d+)$') {
         $start = [int]$matches[1]
         $end = [int]$matches[2]
         

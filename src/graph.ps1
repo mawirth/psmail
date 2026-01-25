@@ -59,6 +59,10 @@ function Get-FolderMessages {
     
     if ($NextLink) {
         # Use next link for pagination
+        # Modify NextLink to use custom $top if provided
+        if ($NextLink -match '\$top=\d+') {
+            $NextLink = $NextLink -replace '\$top=\d+', "`$top=$Top"
+        }
         $response = Invoke-GraphRequest -Method GET -Uri $NextLink
     } else {
         # Build new query
@@ -158,7 +162,20 @@ function Remove-Message {
     
     $uri = "/v1.0/me/messages/$MessageId"
     
-    return Invoke-GraphRequest -Method DELETE -Uri $uri
+    # DELETE requests return no content (HTTP 204) on success
+    # Invoke-GraphRequest returns $null on error, so we need to handle this differently
+    try {
+        Invoke-MgGraphRequest `
+            -Method DELETE `
+            -Uri $uri `
+            -ErrorAction Stop
+        # If no exception was thrown, deletion was successful
+        return @{ success = $true }
+    } catch {
+        Write-Error-Message ("Failed to delete message: {0}" `
+            -f $_.Exception.Message)
+        return $null
+    }
 }
 
 function Send-GraphMessage {

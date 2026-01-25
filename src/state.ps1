@@ -70,7 +70,8 @@ function Set-View {
     param([string]$FolderId)
     
     $global:State.View = $FolderId
-    $global:State.Filter = $null
+    # Filter bleibt beim Ordnerwechsel erhalten
+    # Nur Reset-StateItems aufrufen, um die Nachrichtenliste zu leeren
     Reset-StateItems
 }
 

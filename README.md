@@ -91,12 +91,11 @@ On first run, you will be prompted to:
 
 #### Deleted
 - `RESTORE <#>` or `RESTORE <#-#>` - Move back to Inbox
-- `PURGE <#>` or `PURGE <#-#>` - Delete permanently
-- `X <#>` or `X <#-#>` - Same as PURGE
+- `PURGE <#>` or `PURGE <#-#>` - Delete permanently (only available in Deleted folder)
 
 #### Junk
 - `INBOX <#>` or `INBOX <#-#>` - Move to Inbox (mark as not junk)
-- `X <#>` or `X <#-#>` - Delete permanently
+- `X <#>` or `X <#-#>` - Delete (move to Deleted)
 
 #### When Viewing a Message
 - `REPLY` - Reply to sender
@@ -153,11 +152,11 @@ Spaces around commas are automatically handled
 Duplicates are automatically removed - deletes #1, #3, #5
 
 **Commands supporting bulk operations:**
-- `X` - Delete/move to deleted in all folders
-- `K` - Move to Junk (from Inbox)
-- `INBOX` - Move to Inbox (from Junk)
-- `RESTORE` - Restore from Deleted
-- `PURGE` - Permanently delete from Deleted
+- `X` - Delete/move to deleted (not available in Deleted folder)
+- `K` - Move to Junk (from Inbox only)
+- `INBOX` - Move to Inbox (from Junk only)
+- `RESTORE` - Restore from Deleted (Deleted folder only)
+- `PURGE` - Permanently delete (Deleted folder only)
 
 **Confirmation:**
 All bulk operations show a list of affected messages and require confirmation before proceeding.
@@ -192,7 +191,8 @@ Displays all emails again.
 - **Multi-field search**: Searches From, Subject, and Body simultaneously
 - **Filter indicator**: Active filters are displayed in yellow above the message list: `[Filter active: 'searchtext']`
 - **Pagination works with filters**: Use `M` to load additional filtered results
-- **Auto-reset on folder change**: Filter is cleared when switching folders
+- **Persistent across folders**: Filters remain active when switching between folders (Inbox, Drafts, Sent, Deleted, Junk)
+- **Manual clearing required**: Use `CLEAR` to remove the active filter
 
 ### Performance
 

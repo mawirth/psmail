@@ -127,6 +127,12 @@ while ($true) {
             Invoke-OpenMessage -Index $index
         }
         "X" {
+            # X is not available in Deleted folder - use PURGE or RESTORE instead
+            if ($view -eq "deleteditems") {
+                Write-Error-Message "X not available in Deleted. Use PURGE to permanently delete or RESTORE to recover."
+                continue
+            }
+            
             if (-not $arg) {
                 Write-Error-Message "Usage: X <#>, X <#-#>, or X <#,#,#>"
                 continue
@@ -192,31 +198,29 @@ while ($true) {
                 $deletedIds = @()
                 foreach ($entry in $items) {
                     $item = $entry.Item
-                    if ($view -eq "deleteditems") {
-                        # Hard delete (purge)
-                        if (Remove-Message -MessageId $item.Id) {
-                            $successCount++
-                            $deletedIds += $item.Id
-                        }
-                    } else {
-                        # Move to deleted
-                        if (Move-Message `
-                            -MessageId $item.Id `
-                            -DestinationFolderId $Config.Folders.Deleted) {
-                            $successCount++
-                            $deletedIds += $item.Id
-                        }
+                    # Move to deleted
+                    if (Move-Message `
+                        -MessageId $item.Id `
+                        -DestinationFolderId $Config.Folders.Deleted) {
+                        $successCount++
+                        $deletedIds += $item.Id
                     }
                 }
                 
-                if ($view -eq "deleteditems") {
-                    Write-Success "$successCount message(s) deleted permanently"
-                } else {
-                    Write-Success "$successCount message(s) moved to Deleted"
-                }
+                Write-Success "$successCount message(s) moved to Deleted"
                 
-                # Refresh list without reloading (preserves NextLink for filters)
-                Invoke-RefreshMessageList -DeletedMessageIds $deletedIds
+                if ($deletedIds.Count -gt 0) {
+                    # Refresh list without reloading (preserves NextLink for filters)
+                    Invoke-RefreshMessageList -DeletedMessageIds $deletedIds
+                } else {
+                    # Show current list even if no messages were deleted
+                    Show-CurrentView
+                    Show-MessageList
+                }
+            } else {
+                # Action cancelled - still show the list
+                Show-CurrentView
+                Show-MessageList
             }
         }
         "K" {
@@ -295,8 +299,10 @@ while ($true) {
                 
                 Write-Success "$successCount message(s) moved to Junk"
                 
-                # Refresh list without reloading (preserves NextLink for filters)
-                Invoke-RefreshMessageList -DeletedMessageIds $movedIds
+                if ($movedIds.Count -gt 0) {
+                    # Refresh list without reloading (preserves NextLink for filters)
+                    Invoke-RefreshMessageList -DeletedMessageIds $movedIds
+                }
             }
         }
         "INBOX" {
@@ -375,8 +381,10 @@ while ($true) {
                 
                 Write-Success "$successCount message(s) moved to Inbox"
                 
-                # Refresh list without reloading (preserves NextLink for filters)
-                Invoke-RefreshMessageList -DeletedMessageIds $movedIds
+                if ($movedIds.Count -gt 0) {
+                    # Refresh list without reloading (preserves NextLink for filters)
+                    Invoke-RefreshMessageList -DeletedMessageIds $movedIds
+                }
             }
         }
         "RESTORE" {
@@ -455,8 +463,18 @@ while ($true) {
                 
                 Write-Success "$successCount message(s) restored to Inbox"
                 
-                # Refresh list without reloading (preserves NextLink for filters)
-                Invoke-RefreshMessageList -DeletedMessageIds $restoredIds
+                if ($restoredIds.Count -gt 0) {
+                    # Refresh list without reloading (preserves NextLink for filters)
+                    Invoke-RefreshMessageList -DeletedMessageIds $restoredIds
+                } else {
+                    # Show current list even if no messages were restored
+                    Show-CurrentView
+                    Show-MessageList
+                }
+            } else {
+                # Action cancelled - still show the list
+                Show-CurrentView
+                Show-MessageList
             }
         }
         "PURGE" {
@@ -533,8 +551,18 @@ while ($true) {
                 
                 Write-Success "$successCount message(s) deleted permanently"
                 
-                # Refresh list without reloading (preserves NextLink for filters)
-                Invoke-RefreshMessageList -DeletedMessageIds $purgedIds
+                if ($purgedIds.Count -gt 0) {
+                    # Refresh list without reloading (preserves NextLink for filters)
+                    Invoke-RefreshMessageList -DeletedMessageIds $purgedIds
+                } else {
+                    # Show current list even if no messages were purged
+                    Show-CurrentView
+                    Show-MessageList
+                }
+            } else {
+                # Action cancelled - still show the list
+                Show-CurrentView
+                Show-MessageList
             }
         }
         "NEW" {

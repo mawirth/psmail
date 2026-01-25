@@ -1,24 +1,173 @@
 # ui.ps1
 # Menu rendering and input
 
+function Get-ColumnWidths {
+    <#
+    .SYNOPSIS
+    Calculate column widths for message list display
+    Returns hashtable with column widths based on current view
+    #>
+    param([string]$View)
+    
+    # Get console width
+    $consoleWidth = $Host.UI.RawUI.WindowSize.Width
+    if ($consoleWidth -le 0) { $consoleWidth = 80 }
+    
+    # Column widths (derived from actual column headers and formatting)
+    # Index: "{0,-2} " = 3 chars
+    # Unread: "* " = 2 chars
+    # S/MIME (inbox only): "✔ " = 2 chars
+    # Attachment: "*  " = 3 chars
+    # Date: "yyyy-MM-dd HH:mm  " = 18 chars
+    # From/To: "{0,-18} " = 19 chars
+    # Spacing and margins: ~5 chars
+    
+    $indexWidth = 3
+    $unreadWidth = 2
+    $smimeWidth = 2
+    $attachWidth = 3
+    $dateWidth = 18
+    $addressWidth = 19
+    $spacing = 5
+    
+    # Calculate fixed width (everything except subject)
+    $fixedWidth = $indexWidth + $unreadWidth + $attachWidth + $dateWidth + $addressWidth + $spacing
+    
+    # Add S/MIME column for inbox
+    if ($View -eq "inbox") {
+        $fixedWidth += $smimeWidth
+    }
+    
+    # Subject gets remaining space (minimum 30 chars)
+    $subjectWidth = [Math]::Max(30, $consoleWidth - $fixedWidth)
+    
+    # Address display width (for truncation) is addressWidth minus formatting
+    $addressDisplayWidth = 18
+    
+    return @{
+        Subject = $subjectWidth
+        Address = $addressDisplayWidth
+    }
+}
+
+function Render-MessageListHeader {
+    <#
+    .SYNOPSIS
+    Render the column header for message list
+    #>
+    param([string]$View)
+    
+    if ($View -eq "inbox") {
+        Write-Host "#  U S A  Date              From               " `
+            -NoNewline
+        Write-Host "Subject" -ForegroundColor DarkGray
+    } else {
+        Write-Host "#  U A  Date              " `
+            -NoNewline
+        
+        if ($View -eq "sentitems" -or $View -eq "drafts") {
+            Write-Host "To                 " -NoNewline
+        } else {
+            Write-Host "From               " -NoNewline
+        }
+        
+        Write-Host "Subject" -ForegroundColor DarkGray
+    }
+}
+
+function Render-MessageRow {
+    <#
+    .SYNOPSIS
+    Render a single message row in the list
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Item,
+        
+        [Parameter(Mandatory)]
+        [string]$View,
+        
+        [Parameter(Mandatory)]
+        [hashtable]$ColumnWidths
+    )
+    
+    $isUnread = -not $Item.IsRead
+    $unreadIcon = Get-UnreadIcon $isUnread
+    $date = Format-DateTime $Item.DateTime
+    
+    # Index and unread
+    Write-Host ("{0,-2} " -f $Item.Index) -NoNewline
+    Write-Host "$unreadIcon " -NoNewline
+    
+    # S/MIME icon (inbox only)
+    if ($View -eq "inbox") {
+        $smimeIcon = Get-SmimeIcon $Item.SmimeStatus
+        Write-Host "$smimeIcon " -NoNewline
+    }
+    
+    # Attachment indicator
+    $attachIcon = if ($Item.HasAttachments) { "*" } else { " " }
+    Write-Host "$attachIcon  " -NoNewline
+    
+    # Date
+    Write-Host "$date  " -NoNewline
+    
+    # From/To
+    $addr = if ($View -eq "sentitems" -or $View -eq "drafts") { 
+        $Item.ToAddress 
+    } else { 
+        $Item.FromAddress 
+    }
+    $addrTrunc = Truncate-String $addr $ColumnWidths.Address
+    Write-Host ("{0,-18} " -f $addrTrunc) -NoNewline
+    
+    # Subject
+    $subject = Truncate-String $Item.Subject $ColumnWidths.Subject
+    Write-Host $subject
+}
+
 function Get-OptimalPageSize {
     <#
     .SYNOPSIS
     Calculate optimal page size based on console window height
+    
+    .DESCRIPTION
+    Calculates how many message lines can fit on screen by subtracting
+    all UI overhead (header, menu, pagination) from total console height.
     #>
     
     # Get console height
     $consoleHeight = $Host.UI.RawUI.WindowSize.Height
     if ($consoleHeight -le 0) { $consoleHeight = 30 }
     
-    # Reserve lines for:
-    # - Header (4 lines: 2 blank lines, title, separator line)
-    # - Column header (1 line: "#  U S A  Date...")
-    # - Menu section (7 lines: blank, separator, 4 menu lines, prompt)
-    # - Pagination info (2 lines if present: blank, "[M]...")
-    # - Filter indicator (2 lines if active: "[Filter...]", blank)
-    # - Safety margin (1 line)
-    $reservedLines = 17
+    # Count reserved lines (all non-message UI elements):
+    # 
+    # Header section:
+    #   - 2 blank lines at top
+    #   - 1 folder title line (e.g., "Inbox")
+    #   - 1 separator line (dashes)
+    #   - 1 column header line ("#  U S A  Date...")
+    # = 5 lines
+    # 
+    # Footer/Menu section:
+    #   - 1 blank line before menu
+    #   - 1 separator line (dashes)
+    #   - 1 view-specific menu line (e.g., "[L] List [R #] Read...")
+    #   - 3 global menu lines (folders, filter/contacts, logout)
+    #   - 1 blank line after menu
+    #   - 1 prompt line ("> ")
+    # = 8 lines
+    # 
+    # Optional elements (always reserve space):
+    #   - 2 pagination lines (blank + "[M] More messages available")
+    #   - 2 filter indicator lines ("[Filter active: '...']" + blank)
+    # = 4 lines
+    # 
+    # Safety margin: 1 line
+    # 
+    # Total: 5 + 8 + 4 + 1 = 18 lines
+    
+    $reservedLines = 18
     
     # Calculate available lines for messages
     $availableLines = $consoleHeight - $reservedLines
@@ -139,75 +288,15 @@ function Show-MessageList {
         return
     }
     
-    # Get console width
-    $consoleWidth = $Host.UI.RawUI.WindowSize.Width
-    if ($consoleWidth -le 0) { $consoleWidth = 80 }
-    
     $view = $global:State.View
-    
-    # Calculate dynamic widths based on console width
-    # Fixed columns: Index(3) Unread(2) Date(18)
-    # Inbox adds: Smime(3)
-    # From/To: 20 chars minimum
-    # Subject: Rest of space
-    
-    $fixedWidth = if ($view -eq "inbox") { 26 + 20 } else { 23 + 20 }
-    $subjectWidth = [Math]::Max(30, $consoleWidth - $fixedWidth - 5)
+    $columnWidths = Get-ColumnWidths -View $view
     
     # Header line
-    if ($view -eq "inbox") {
-        Write-Host "#  U S A  Date              From               " `
-            -NoNewline
-        Write-Host "Subject" -ForegroundColor DarkGray
-    } else {
-        Write-Host "#  U A  Date              " `
-            -NoNewline
-        
-        if ($view -eq "sentitems" -or $view -eq "drafts") {
-            Write-Host "To                 " -NoNewline
-        } else {
-            Write-Host "From               " -NoNewline
-        }
-        
-        Write-Host "Subject" -ForegroundColor DarkGray
-    }
+    Render-MessageListHeader -View $view
     
     # Message rows
     foreach ($item in $global:State.Items) {
-        $index = $item.Index
-        $isUnread = -not $item.IsRead
-        $unreadIcon = Get-UnreadIcon $isUnread
-        $date = Format-DateTime $item.DateTime
-        
-        # Index and unread
-        Write-Host ("{0,-2} " -f $index) -NoNewline
-        Write-Host "$unreadIcon " -NoNewline
-        
-        # S/MIME icon (inbox only)
-        if ($view -eq "inbox") {
-            $smimeIcon = Get-SmimeIcon $item.SmimeStatus
-            Write-Host "$smimeIcon " -NoNewline
-        }
-        
-        # Attachment indicator
-        $attachIcon = if ($item.HasAttachments) { "*" } else { " " }
-        Write-Host "$attachIcon  " -NoNewline
-        
-        # Date
-        Write-Host "$date  " -NoNewline
-        
-        # From/To
-        $addr = if ($view -eq "sentitems" -or $view -eq "drafts") { 
-            $item.ToAddress 
-        } else { 
-            $item.FromAddress 
-        }
-        $addrTrunc = Truncate-String $addr 18
-        Write-Host ("{0,-18} " -f $addrTrunc) -NoNewline
-        
-        # Subject (use remaining width)
-        $subject = Truncate-String $item.Subject $subjectWidth
-        Write-Host $subject
+        Render-MessageRow -Item $item -View $view -ColumnWidths $columnWidths
     }
     
     # Pagination info

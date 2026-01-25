@@ -1,6 +1,99 @@
 # mail_list.ps1
 # Folder listing logic
 
+function ConvertTo-MessageItem {
+    <#
+    .SYNOPSIS
+    Convert a Graph API message to an internal item object
+    #>
+    param(
+        [Parameter(Mandatory)]
+        $Message,
+        
+        [Parameter(Mandatory)]
+        [int]$Index
+    )
+    
+    $item = @{
+        Index = $Index
+        Id = $Message.id
+        Subject = $Message.subject
+        FromAddress = $Message.from.emailAddress.address
+        ToAddress = ""
+        DateTime = [datetime]$Message.receivedDateTime
+        IsRead = $Message.isRead
+        HasAttachments = $Message.hasAttachments
+        SmimeStatus = $Config.SmimeStatus.None
+    }
+    
+    # Extract first To recipient
+    if ($Message.toRecipients -and $Message.toRecipients.Count -gt 0) {
+        $item.ToAddress = $Message.toRecipients[0].emailAddress.address
+    }
+    
+    # Detect S/MIME for inbox messages
+    if ($global:State.View -eq "inbox") {
+        $item.SmimeStatus = Get-MessageSmimeStatus $Message.id
+    }
+    
+    return $item
+}
+
+function Get-Messages {
+    <#
+    .SYNOPSIS
+    Get messages with automatic filter handling
+    Returns hashtable with Messages and NextLink
+    #>
+    param(
+        [int]$Count,
+        [string]$NextLink = $null
+    )
+    
+    $filterText = Get-Filter
+    
+    if ($filterText) {
+        # Use filtered message retrieval
+        return Get-FilteredMessages `
+            -FolderId $global:State.View `
+            -FilterText $filterText `
+            -TargetCount $Count `
+            -NextLink $NextLink
+    } else {
+        # Normal message retrieval
+        return Get-FolderMessages `
+            -FolderId $global:State.View `
+            -Top $Count `
+            -NextLink $NextLink
+    }
+}
+
+function Add-MessagesToState {
+    <#
+    .SYNOPSIS
+    Add messages to state and convert them to items
+    Returns array of added items
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [array]$Messages
+    )
+    
+    $startIndex = $global:State.Items.Count + 1
+    $addedItems = [System.Collections.ArrayList]@()
+    
+    $index = $startIndex
+    foreach ($msg in $Messages) {
+        $item = ConvertTo-MessageItem -Message $msg -Index $index
+        Add-StateItem $item
+        [void]$addedItems.Add($item)
+        $index++
+    }
+    
+    # Return as array (ArrayList will not unwrap)
+    return @($addedItems)
+}
+
 function Invoke-ListMessages {
     <#
     .SYNOPSIS
@@ -14,20 +107,12 @@ function Invoke-ListMessages {
     
     # Check if filter is active
     $filterText = Get-Filter
-    
     if ($filterText) {
-        # Use filtered message retrieval
         Write-Host "Applying filter: '$filterText'..." -ForegroundColor Cyan
-        $result = Get-FilteredMessages `
-            -FolderId $global:State.View `
-            -FilterText $filterText `
-            -TargetCount $pageSize
-    } else {
-        # Normal message retrieval
-        $result = Get-FolderMessages `
-            -FolderId $global:State.View `
-            -Top $pageSize
     }
+    
+    # Get messages (automatically handles filter vs normal)
+    $result = Get-Messages -Count $pageSize
     
     if (-not $result) {
         Write-Error-Message "Failed to retrieve messages"
@@ -47,34 +132,8 @@ function Invoke-ListMessages {
     # Store next link for pagination
     $global:State.NextLink = $result.NextLink
     
-    # Process messages
-    $index = 1
-    foreach ($msg in $result.Messages) {
-        $item = @{
-            Index = $index
-            Id = $msg.id
-            Subject = $msg.subject
-            FromAddress = $msg.from.emailAddress.address
-            ToAddress = ""
-            DateTime = [datetime]$msg.receivedDateTime
-            IsRead = $msg.isRead
-            HasAttachments = $msg.hasAttachments
-            SmimeStatus = $Config.SmimeStatus.None
-        }
-        
-        # Extract first To recipient
-        if ($msg.toRecipients -and $msg.toRecipients.Count -gt 0) {
-            $item.ToAddress = $msg.toRecipients[0].emailAddress.address
-        }
-        
-        # Detect S/MIME for inbox messages
-        if ($global:State.View -eq "inbox") {
-            $item.SmimeStatus = Get-MessageSmimeStatus $msg.id
-        }
-        
-        Add-StateItem $item
-        $index++
-    }
+    # Add messages to state
+    Add-MessagesToState -Messages $result.Messages | Out-Null
     
     # Display list
     Show-CurrentView
@@ -97,21 +156,12 @@ function Invoke-ListMore {
     
     # Check if filter is active
     $filterText = Get-Filter
-    
     if ($filterText) {
-        # Use filtered message retrieval
         Write-Host "Loading more filtered messages..." -ForegroundColor Cyan
-        $result = Get-FilteredMessages `
-            -FolderId $global:State.View `
-            -FilterText $filterText `
-            -TargetCount $pageSize `
-            -NextLink $global:State.NextLink
-    } else {
-        # Normal message retrieval
-        $result = Get-FolderMessages `
-            -FolderId $global:State.View `
-            -NextLink $global:State.NextLink
     }
+    
+    # Get messages (automatically handles filter vs normal)
+    $result = Get-Messages -Count $pageSize -NextLink $global:State.NextLink
     
     if (-not $result -or -not $result.Messages) {
         Write-Error-Message "Failed to retrieve messages"
@@ -126,37 +176,8 @@ function Invoke-ListMore {
     # Update next link
     $global:State.NextLink = $result.NextLink
     
-    # Store starting index for new messages
-    $startIndex = $global:State.Items.Count + 1
-    
-    # Append messages
-    $index = $startIndex
-    $newItems = @()
-    foreach ($msg in $result.Messages) {
-        $item = @{
-            Index = $index
-            Id = $msg.id
-            Subject = $msg.subject
-            FromAddress = $msg.from.emailAddress.address
-            ToAddress = ""
-            DateTime = [datetime]$msg.receivedDateTime
-            IsRead = $msg.isRead
-            HasAttachments = $msg.hasAttachments
-            SmimeStatus = $Config.SmimeStatus.None
-        }
-        
-        if ($msg.toRecipients -and $msg.toRecipients.Count -gt 0) {
-            $item.ToAddress = $msg.toRecipients[0].emailAddress.address
-        }
-        
-        if ($global:State.View -eq "inbox") {
-            $item.SmimeStatus = Get-MessageSmimeStatus $msg.id
-        }
-        
-        Add-StateItem $item
-        $newItems += $item
-        $index++
-    }
+    # Add messages to state
+    $newItems = @(Add-MessagesToState -Messages $result.Messages)
     
     # Display only new messages
     Write-Host ""
@@ -165,64 +186,13 @@ function Invoke-ListMore {
     
     # Show header for new messages
     $view = $global:State.View
-    if ($view -eq "inbox") {
-        Write-Host "#  U S A  Date              From               " `
-            -NoNewline
-        Write-Host "Subject" -ForegroundColor DarkGray
-    } else {
-        Write-Host "#  U A  Date              " `
-            -NoNewline
-        
-        if ($view -eq "sentitems" -or $view -eq "drafts") {
-            Write-Host "To                 " -NoNewline
-        } else {
-            Write-Host "From               " -NoNewline
-        }
-        
-        Write-Host "Subject" -ForegroundColor DarkGray
-    }
+    $columnWidths = Get-ColumnWidths -View $view
+    
+    Render-MessageListHeader -View $view
     
     # Display only new items
     foreach ($item in $newItems) {
-        $isUnread = -not $item.IsRead
-        $unreadIcon = Get-UnreadIcon $isUnread
-        $date = Format-DateTime $item.DateTime
-        
-        # Index and unread
-        Write-Host ("{0,-2} " -f $item.Index) -NoNewline
-        Write-Host "$unreadIcon " -NoNewline
-        
-        # S/MIME icon (inbox only)
-        if ($view -eq "inbox") {
-            $smimeIcon = Get-SmimeIcon $item.SmimeStatus
-            Write-Host "$smimeIcon " -NoNewline
-        }
-        
-        # Attachment indicator
-        $attachIcon = if ($item.HasAttachments) { "*" } else { " " }
-        Write-Host "$attachIcon  " -NoNewline
-        
-        # Date
-        Write-Host "$date  " -NoNewline
-        
-        # From/To
-        $addr = if ($view -eq "sentitems" -or $view -eq "drafts") { 
-            $item.ToAddress 
-        } else { 
-            $item.FromAddress 
-        }
-        $addrTrunc = Truncate-String $addr 18
-        Write-Host ("{0,-18} " -f $addrTrunc) -NoNewline
-        
-        # Get console width for subject
-        $consoleWidth = $Host.UI.RawUI.WindowSize.Width
-        if ($consoleWidth -le 0) { $consoleWidth = 80 }
-        $fixedWidth = if ($view -eq "inbox") { 26 + 20 } else { 23 + 20 }
-        $subjectWidth = [Math]::Max(30, $consoleWidth - $fixedWidth - 5)
-        
-        # Subject
-        $subject = Truncate-String $item.Subject $subjectWidth
-        Write-Host $subject
+        Render-MessageRow -Item $item -View $view -ColumnWidths $columnWidths
     }
     
     # Show pagination info if more available
@@ -238,8 +208,8 @@ function Invoke-ListMore {
 function Invoke-RefreshMessageList {
     <#
     .SYNOPSIS
-    Refresh the message list display without reloading from server
-    Used after deleting messages to preserve NextLink for filters
+    Refresh the message list display after deleting/moving messages
+    Automatically loads more messages to maintain optimal page size
     #>
     param(
         [Parameter(Mandatory)]
@@ -247,30 +217,51 @@ function Invoke-RefreshMessageList {
     )
     
     # Remove deleted items from state and re-index
+    $deletedCount = $DeletedMessageIds.Count
     Remove-StateItems -MessageIds $DeletedMessageIds
     
-    # Check if we should auto-load more messages
-    # Load more if: list is empty OR list has fewer than 5 items AND more available
+    # Auto-load messages to maintain optimal page size
+    $loadedCount = 0
     if ($global:State.NextLink) {
-        if ($global:State.Items.Count -eq 0) {
-            # List is empty, auto-load next page
-            Write-Host ""
-            Write-Host "List empty, loading more messages..." -ForegroundColor Cyan
-            Invoke-ListMore
-            return
-        }
-        elseif ($global:State.Items.Count -lt 5) {
-            # List has very few items, offer to load more
-            Show-CurrentView
-            Show-MessageList
-            Write-Host ""
-            Write-Host "Only $($global:State.Items.Count) message(s) remaining. " -NoNewline -ForegroundColor Yellow
-            Write-Host "Press [M] to load more." -ForegroundColor Yellow
-            return
+        $pageSize = Get-OptimalPageSize
+        $currentCount = $global:State.Items.Count
+        
+        # Calculate how many messages we need to load to reach optimal size
+        $messagesToLoad = [Math]::Min($deletedCount, $pageSize - $currentCount)
+        
+        if ($messagesToLoad -gt 0) {
+            # Get messages (may return more than requested, especially with filters)
+            $result = Get-Messages -Count $messagesToLoad -NextLink $global:State.NextLink
+            
+            if ($result -and $result.Messages -and $result.Messages.Count -gt 0) {
+                # Update next link
+                $global:State.NextLink = $result.NextLink
+                
+                # Only add exactly as many messages as we need
+                $messagesToAdd = [Math]::Min($result.Messages.Count, $messagesToLoad)
+                
+                if ($messagesToAdd -ge $result.Messages.Count) {
+                    # Take all messages
+                    $messageBatch = $result.Messages
+                } else {
+                    # Take only what we need
+                    $messageBatch = @($result.Messages | Select-Object -First $messagesToAdd)
+                }
+                
+                # Add messages to state
+                $addedItems = @(Add-MessagesToState -Messages $messageBatch)
+                $loadedCount = $addedItems.Count
+            }
         }
     }
     
-    # Display updated list normally
+    # Show load message if we loaded new messages
+    if ($loadedCount -gt 0) {
+        Write-Host "Loaded $loadedCount new message(s)" -ForegroundColor Green
+        Write-Host ""
+    }
+    
+    # Display the refreshed message list
     Show-CurrentView
     Show-MessageList
 }
