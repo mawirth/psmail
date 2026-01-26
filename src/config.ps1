@@ -4,7 +4,7 @@
 $script:Config = @{
     # Version
     Version = "1.1-dev"
-    GitHubUrl = "https://github.com/mawirth/psmail"
+    GitHubUrl = "https://github.com/mawirth/psmail/tree/develop"
     # Graph API scopes required
     # Note: People.Read and Contacts.Read may not work on all consumer accounts
     # The contacts feature will build a list from email history as fallback
