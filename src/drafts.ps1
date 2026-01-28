@@ -354,9 +354,10 @@ function Parse-DraftContent {
             # Parse attachment paths (comma or semicolon separated)
             # Skip [existing:...] markers
             if (-not [string]::IsNullOrWhiteSpace($attLine)) {
+                $existingPrefix = [regex]::Escape($Config.EmailTemplates.ExistingAttachmentPrefix)
+                
                 $paths = $attLine -split '[,;]' | ForEach-Object {
                     $_.Trim()
-                $existingPrefix = [regex]::Escape($Config.EmailTemplates.ExistingAttachmentPrefix)
                 } | Where-Object {
                     -not [string]::IsNullOrWhiteSpace($_) `
                         -and $_ -notmatch "^$existingPrefix"
@@ -491,7 +492,7 @@ function Resolve-AttachmentPath {
     }
     
     # Convert forward slashes to backslashes on Windows
-    $Path = $Path -replace '/', '\'
+    $Path = $Path -replace '/', '\\'
     
     # If relative path, resolve against current location
     if (-not [System.IO.Path]::IsPathRooted($Path)) {
