@@ -44,6 +44,7 @@ if ($Version) {
 . "$ScriptRoot\src\state.ps1"
 . "$ScriptRoot\src\auth.ps1"
 . "$ScriptRoot\src\graph.ps1"
+. "$ScriptRoot\src\message_operations.ps1"
 . "$ScriptRoot\src\ui.ps1"
 . "$ScriptRoot\src\mail_list.ps1"
 . "$ScriptRoot\src\mail_read.ps1"
@@ -150,95 +151,16 @@ while ($true) {
                 continue
             }
             
-            if (-not $arg) {
-                Write-Error-Message "Usage: X <#>, X <#-#>, or X <#,#,#>"
-                continue
-            }
-            
-            # Parse argument - could be single number or range
-            $indices = Parse-IndexRange $arg
-            
-            if (-not $indices) {
-                Write-Error-Message "Invalid index or range: $arg"
-                continue
-            }
-            
-            # Validate all indices
-            $items = @()
-            foreach ($index in $indices) {
-                $item = Get-StateItem $index
-                if (-not $item) {
-                    Write-Error-Message "Invalid message number: $index"
-                    continue
-                }
-                $items += @{ Index = $index; Item = $item }
-            }
-            
-            if ($items.Count -eq 0) {
-                continue
-            }
-            
-            # Show message details before delete
-            Write-Host ""
-            if ($items.Count -eq 1) {
-                Write-Host "Delete this message?" `
-                    -ForegroundColor $Config.Colors.ConfirmWarning
-            } else {
-                Write-Host "Delete these $($items.Count) messages?" `
-                    -ForegroundColor $Config.Colors.ConfirmWarning
-            }
-            
-            foreach ($entry in $items) {
-                $index = $entry.Index
-                $item = $entry.Item
-                $date = Format-DateTime $item.DateTime
-                $from = if ($view -eq "sentitems") {
-                    $item.ToAddress
-                } else {
-                    $item.FromAddress
-                }
-                Write-Host "  #$index  $date  $from" `
-                    -ForegroundColor $Config.Colors.MessageDetail
-                Write-Host "  Subject: $($item.Subject)" `
-                    -ForegroundColor $Config.Colors.MessageDetail
-            }
-            Write-Host ""
-            
-            $confirmMsg = if ($items.Count -eq 1) { 
-                "Confirm delete" 
-            } else { 
-                "Confirm delete all" 
-            }
-            
-            if (Confirm-Action $confirmMsg) {
-                $successCount = 0
-                $deletedIds = @()
-                foreach ($entry in $items) {
-                    $item = $entry.Item
-                    # Move to deleted
-                    if (Move-Message `
-                        -MessageId $item.Id `
-                        -DestinationFolderId $Config.Folders.Deleted) {
-                        $successCount++
-                        $deletedIds += $item.Id
-                    }
-                }
-                
-                Write-Success "$successCount message(s) moved to Deleted"
-                
-                if ($deletedIds.Count -gt 0) {
-                    # Refresh list without reloading (preserves NextLink for filters)
-                    Invoke-RefreshMessageList -DeletedMessageIds $deletedIds
-                } else {
-                    # Show current list even if no messages were deleted
-                    Show-CurrentView
-                    Show-MessageList
-                }
-            } else {
-                # Action cancelled - still show the list
-                Show-CurrentView
-                Show-MessageList
-            }
+            Invoke-BulkMessageOperation `
+                -Argument $arg `
+                -Command "X" `
+                -OperationType "Move" `
+                -PromptMessage "Delete" `
+                -ConfirmMessage "Confirm delete" `
+                -SuccessMessage "{0} message(s) moved to Deleted" `
+                -DestinationFolderId $Config.Folders.Deleted `
+                -ConfirmColor "ConfirmWarning" `
+                -ShowCancelledList $true
         }
         "K" {
             # Move to Junk (from inbox)
@@ -246,81 +168,17 @@ while ($true) {
                 Write-Error-Message "K command only available in Inbox"
                 continue
             }
-            if (-not $arg) {
-                Write-Error-Message "Usage: K <#>, K <#-#>, or K <#,#,#>"
-                continue
-            }
             
-            # Parse argument - could be single number or range
-            $indices = Parse-IndexRange $arg
-            
-            if (-not $indices) {
-                Write-Error-Message "Invalid index or range: $arg"
-                continue
-            }
-            
-            # Validate all indices
-            $items = @()
-            foreach ($index in $indices) {
-                $item = Get-StateItem $index
-                if (-not $item) {
-                    Write-Error-Message "Invalid message number: $index"
-                    continue
-                }
-                $items += @{ Index = $index; Item = $item }
-            }
-            
-            if ($items.Count -eq 0) {
-                continue
-            }
-            
-            # Show message details before moving to junk
-            Write-Host ""
-            if ($items.Count -eq 1) {
-                Write-Host "Move this message to Junk?" `
-                    -ForegroundColor $Config.Colors.ConfirmWarning
-            } else {
-                Write-Host "Move these $($items.Count) messages to Junk?" `
-                    -ForegroundColor $Config.Colors.ConfirmWarning
-            }
-            
-            foreach ($entry in $items) {
-                $index = $entry.Index
-                $item = $entry.Item
-                $date = Format-DateTime $item.DateTime
-                Write-Host "  #$index  $date  $($item.FromAddress)" `
-                    -ForegroundColor $Config.Colors.MessageDetail
-                Write-Host "  Subject: $($item.Subject)" `
-                    -ForegroundColor $Config.Colors.MessageDetail
-            }
-            Write-Host ""
-            
-            $confirmMsg = if ($items.Count -eq 1) { 
-                "Confirm move to Junk" 
-            } else { 
-                "Confirm move all to Junk" 
-            }
-            
-            if (Confirm-Action $confirmMsg) {
-                $successCount = 0
-                $movedIds = @()
-                foreach ($entry in $items) {
-                    $item = $entry.Item
-                    if (Move-Message `
-                        -MessageId $item.Id `
-                        -DestinationFolderId $Config.Folders.Junk) {
-                        $successCount++
-                        $movedIds += $item.Id
-                    }
-                }
-                
-                Write-Success "$successCount message(s) moved to Junk"
-                
-                if ($movedIds.Count -gt 0) {
-                    # Refresh list without reloading (preserves NextLink for filters)
-                    Invoke-RefreshMessageList -DeletedMessageIds $movedIds
-                }
-            }
+            Invoke-BulkMessageOperation `
+                -Argument $arg `
+                -Command "K" `
+                -OperationType "Move" `
+                -PromptMessage "Move to Junk" `
+                -ConfirmMessage "Confirm move to Junk" `
+                -SuccessMessage "{0} message(s) moved to Junk" `
+                -DestinationFolderId $Config.Folders.Junk `
+                -ConfirmColor "ConfirmWarning" `
+                -ShowCancelledList $false
         }
         "INBOX" {
             # Move to Inbox (from junk)
@@ -328,81 +186,17 @@ while ($true) {
                 Write-Error-Message "INBOX command only available in Junk"
                 continue
             }
-            if (-not $arg) {
-                Write-Error-Message "Usage: INBOX <#>, INBOX <#-#>, or INBOX <#,#,#>"
-                continue
-            }
             
-            # Parse argument - could be single number or range
-            $indices = Parse-IndexRange $arg
-            
-            if (-not $indices) {
-                Write-Error-Message "Invalid index or range: $arg"
-                continue
-            }
-            
-            # Validate all indices
-            $items = @()
-            foreach ($index in $indices) {
-                $item = Get-StateItem $index
-                if (-not $item) {
-                    Write-Error-Message "Invalid message number: $index"
-                    continue
-                }
-                $items += @{ Index = $index; Item = $item }
-            }
-            
-            if ($items.Count -eq 0) {
-                continue
-            }
-            
-            # Show message details before moving to inbox
-            Write-Host ""
-            if ($items.Count -eq 1) {
-                Write-Host "Move this message to Inbox?" `
-                    -ForegroundColor $Config.Colors.ConfirmWarning
-            } else {
-                Write-Host "Move these $($items.Count) messages to Inbox?" `
-                    -ForegroundColor $Config.Colors.ConfirmWarning
-            }
-            
-            foreach ($entry in $items) {
-                $index = $entry.Index
-                $item = $entry.Item
-                $date = Format-DateTime $item.DateTime
-                Write-Host "  #$index  $date  $($item.FromAddress)" `
-                    -ForegroundColor $Config.Colors.MessageDetail
-                Write-Host "  Subject: $($item.Subject)" `
-                    -ForegroundColor $Config.Colors.MessageDetail
-            }
-            Write-Host ""
-            
-            $confirmMsg = if ($items.Count -eq 1) { 
-                "Confirm move to Inbox" 
-            } else { 
-                "Confirm move all to Inbox" 
-            }
-            
-            if (Confirm-Action $confirmMsg) {
-                $successCount = 0
-                $movedIds = @()
-                foreach ($entry in $items) {
-                    $item = $entry.Item
-                    if (Move-Message `
-                        -MessageId $item.Id `
-                        -DestinationFolderId $Config.Folders.Inbox) {
-                        $successCount++
-                        $movedIds += $item.Id
-                    }
-                }
-                
-                Write-Success "$successCount message(s) moved to Inbox"
-                
-                if ($movedIds.Count -gt 0) {
-                    # Refresh list without reloading (preserves NextLink for filters)
-                    Invoke-RefreshMessageList -DeletedMessageIds $movedIds
-                }
-            }
+            Invoke-BulkMessageOperation `
+                -Argument $arg `
+                -Command "INBOX" `
+                -OperationType "Move" `
+                -PromptMessage "Move to Inbox" `
+                -ConfirmMessage "Confirm move to Inbox" `
+                -SuccessMessage "{0} message(s) moved to Inbox" `
+                -DestinationFolderId $Config.Folders.Inbox `
+                -ConfirmColor "ConfirmWarning" `
+                -ShowCancelledList $false
         }
         "RESTORE" {
             # Restore from deleted
@@ -410,89 +204,17 @@ while ($true) {
                 Write-Error-Message "RESTORE only available in Deleted"
                 continue
             }
-            if (-not $arg) {
-                Write-Error-Message "Usage: RESTORE <#>, RESTORE <#-#>, or RESTORE <#,#,#>"
-                continue
-            }
             
-            # Parse argument - could be single number or range
-            $indices = Parse-IndexRange $arg
-            
-            if (-not $indices) {
-                Write-Error-Message "Invalid index or range: $arg"
-                continue
-            }
-            
-            # Validate all indices
-            $items = @()
-            foreach ($index in $indices) {
-                $item = Get-StateItem $index
-                if (-not $item) {
-                    Write-Error-Message "Invalid message number: $index"
-                    continue
-                }
-                $items += @{ Index = $index; Item = $item }
-            }
-            
-            if ($items.Count -eq 0) {
-                continue
-            }
-            
-            # Show message details before restoring
-            Write-Host ""
-            if ($items.Count -eq 1) {
-                Write-Host "Restore this message to Inbox?" `
-                    -ForegroundColor $Config.Colors.ConfirmWarning
-            } else {
-                Write-Host "Restore these $($items.Count) messages to Inbox?" `
-                    -ForegroundColor $Config.Colors.ConfirmWarning
-            }
-            
-            foreach ($entry in $items) {
-                $index = $entry.Index
-                $item = $entry.Item
-                $date = Format-DateTime $item.DateTime
-                Write-Host "  #$index  $date  $($item.FromAddress)" `
-                    -ForegroundColor $Config.Colors.MessageDetail
-                Write-Host "  Subject: $($item.Subject)" `
-                    -ForegroundColor $Config.Colors.MessageDetail
-            }
-            Write-Host ""
-            
-            $confirmMsg = if ($items.Count -eq 1) { 
-                "Confirm restore" 
-            } else { 
-                "Confirm restore all" 
-            }
-            
-            if (Confirm-Action $confirmMsg) {
-                $successCount = 0
-                $restoredIds = @()
-                foreach ($entry in $items) {
-                    $item = $entry.Item
-                    if (Move-Message `
-                        -MessageId $item.Id `
-                        -DestinationFolderId $Config.Folders.Inbox) {
-                        $successCount++
-                        $restoredIds += $item.Id
-                    }
-                }
-                
-                Write-Success "$successCount message(s) restored to Inbox"
-                
-                if ($restoredIds.Count -gt 0) {
-                    # Refresh list without reloading (preserves NextLink for filters)
-                    Invoke-RefreshMessageList -DeletedMessageIds $restoredIds
-                } else {
-                    # Show current list even if no messages were restored
-                    Show-CurrentView
-                    Show-MessageList
-                }
-            } else {
-                # Action cancelled - still show the list
-                Show-CurrentView
-                Show-MessageList
-            }
+            Invoke-BulkMessageOperation `
+                -Argument $arg `
+                -Command "RESTORE" `
+                -OperationType "Move" `
+                -PromptMessage "Restore to Inbox" `
+                -ConfirmMessage "Confirm restore" `
+                -SuccessMessage "{0} message(s) restored to Inbox" `
+                -DestinationFolderId $Config.Folders.Inbox `
+                -ConfirmColor "ConfirmWarning" `
+                -ShowCancelledList $true
         }
         "PURGE" {
             # Hard delete from deleted items
@@ -500,87 +222,16 @@ while ($true) {
                 Write-Error-Message "PURGE only available in Deleted"
                 continue
             }
-            if (-not $arg) {
-                Write-Error-Message "Usage: PURGE <#>, PURGE <#-#>, or PURGE <#,#,#>"
-                continue
-            }
             
-            # Parse argument - could be single number or range
-            $indices = Parse-IndexRange $arg
-            
-            if (-not $indices) {
-                Write-Error-Message "Invalid index or range: $arg"
-                continue
-            }
-            
-            # Validate all indices
-            $items = @()
-            foreach ($index in $indices) {
-                $item = Get-StateItem $index
-                if (-not $item) {
-                    Write-Error-Message "Invalid message number: $index"
-                    continue
-                }
-                $items += @{ Index = $index; Item = $item }
-            }
-            
-            if ($items.Count -eq 0) {
-                continue
-            }
-            
-            # Show message details before purge
-            Write-Host ""
-            if ($items.Count -eq 1) {
-                Write-Host "Permanently delete this message?" `
-                    -ForegroundColor $Config.Colors.ConfirmDanger
-            } else {
-                Write-Host "Permanently delete these $($items.Count) messages?" `
-                    -ForegroundColor $Config.Colors.ConfirmDanger
-            }
-            
-            foreach ($entry in $items) {
-                $index = $entry.Index
-                $item = $entry.Item
-                $date = Format-DateTime $item.DateTime
-                Write-Host "  #$index  $date  $($item.FromAddress)" `
-                    -ForegroundColor $Config.Colors.MessageDetail
-                Write-Host "  Subject: $($item.Subject)" `
-                    -ForegroundColor $Config.Colors.MessageDetail
-            }
-            Write-Host ""
-            
-            $confirmMsg = if ($items.Count -eq 1) { 
-                "Confirm permanent delete" 
-            } else { 
-                "Confirm permanent delete all" 
-            }
-            
-            if (Confirm-Action $confirmMsg) {
-                $successCount = 0
-                $purgedIds = @()
-                foreach ($entry in $items) {
-                    $item = $entry.Item
-                    if (Remove-Message -MessageId $item.Id) {
-                        $successCount++
-                        $purgedIds += $item.Id
-                    }
-                }
-                
-                Write-Success "$successCount message(s) deleted permanently"
-                
-                if ($purgedIds.Count -gt 0) {
-                    # Refresh list without reloading (preserves NextLink for filters)
-                    Invoke-RefreshMessageList -DeletedMessageIds $purgedIds
-                } else {
-                    # Show current list even if no messages were purged
-                    Show-CurrentView
-                    Show-MessageList
-                }
-            } else {
-                # Action cancelled - still show the list
-                Show-CurrentView
-                Show-MessageList
-            }
+            Invoke-BulkMessageOperation `
+                -Argument $arg `
+                -Command "PURGE" `
+                -OperationType "Delete" `
+                -PromptMessage "Permanently delete" `
+                -ConfirmMessage "Confirm permanent delete" `
+                -SuccessMessage "{0} message(s) deleted permanently" `
+                -ConfirmColor "ConfirmDanger" `
+                -ShowCancelledList $true
         }
         "NEW" {
             # New draft
