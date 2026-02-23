@@ -15,7 +15,7 @@ This document contains context, patterns, and guidelines for AI assistants worki
 ### Security & Safety
 1. **NEVER delete emails from Inbox or other folders without explicit user confirmation**
 2. **PURGE command ONLY works in Deleted folder** - this is a hard requirement
-3. **Never include co-author line in commits**: `Co-Authored-By: Warp <agent@warp.dev>`
+3. **Always include co-author line in commits**: `Co-Authored-By: Warp <agent@warp.dev>`
 4. **Never expose secrets in terminal commands** - use environment variables
 5. **Never run commands that exit the shell** (e.g., `set -e`, `set -u`)
 
@@ -39,7 +39,8 @@ src/
   graph.ps1             # REST API helpers and wrappers
   ui.ps1                # Menu rendering, input parsing, column calculations
   mail_list.ps1         # Message listing logic
-  mail_read.ps1         # Message display and paging
+  mail_read.ps1         # Message display, HTML-to-text conversion, paging
+  message_operations.ps1 # Reusable bulk message operations
   drafts.ps1            # Draft lifecycle and sending
   editor.ps1            # nvim integration
   attachments.ps1       # Attachment handling
@@ -69,6 +70,21 @@ src/
 - `Invoke-RefreshMessageList` - Refresh display after delete/move (auto-loads replacements)
 - `Add-MessagesToState` - Add messages and assign indices
 - `ConvertTo-MessageItem` - Convert Graph API message to internal format
+
+#### Bulk Operations (message_operations.ps1)
+- `Invoke-BulkMessageOperation` - Generic handler for all bulk move/delete operations
+  - Replaces ~435 lines of duplicated code across 5 command handlers (X, K, INBOX, RESTORE, PURGE)
+  - Parameters: `-Indices`, `-Operation` (callback), `-OperationName`, `-ConfirmStyle`
+  - Handles index parsing, validation, confirmation, execution, and list refresh
+
+#### HTML-to-Text Conversion (mail_read.ps1)
+- `Convert-HtmlToText` - Converts HTML email body to readable plain text
+  - Removes script/style/head elements
+  - Strips table structure tags while keeping content
+  - Extracts links as `Label <URL>` and unwraps SafeLinks
+  - `</p>`, `<br>`, headings → newline; `</div>` → space (layout, not paragraph)
+- `Show-PagedContent` - Paged display with word-wrapping
+- `Format-WordWrap` - Word-wrap text to console width
 
 #### Graph API (graph.ps1)
 - `Invoke-GraphRequest` - Wrapper with error handling
@@ -168,6 +184,15 @@ Total: 17 lines
 **Cause**: Header and row rendering repeated in multiple functions.
 **Solution**: Extract to `Render-MessageListHeader` and `Render-MessageRow` helpers.
 
+### Issue: Email text showing single characters per line
+**Cause**: `Format-WordWrap` returns a single string for short lines. PowerShell string indexing `"hello"[0]` returns `"h"` (first character), not the whole string.
+**Solution**: Wrap `Format-WordWrap` result in `@()` to always get an array: `$wrapped = @(Format-WordWrap ...)`.
+**General rule**: Always use `@()` when storing function results that will be indexed with `[0]`.
+
+### Issue: HTML emails display only layout artifacts
+**Cause**: `</div>` was converted to newline, but HTML emails use `<div>` for layout (single chars in cells).
+**Solution**: Only `</p>`, `<br>`, headings, `</li>` create newlines. `</div>` becomes a space. Outlook uses `<p>` for real paragraphs.
+
 ## Development Workflow
 
 ### Making Changes
@@ -175,7 +200,7 @@ Total: 17 lines
 2. **Test interactively** - use `.\psmail.ps1` in interact mode
 3. **Remove debug output** - clean up all debug `Write-Host` statements
 4. **Update documentation** - modify README.md if user-facing changes
-5. **Commit without co-author** - do not include `Co-Authored-By: Warp <agent@warp.dev>`
+5. **Always include co-author** - add `Co-Authored-By: Warp <agent@warp.dev>` to every commit
 
 ### Testing Strategy
 - **Don't delete user's real emails** - when testing X/PURGE, acknowledge in task
@@ -271,4 +296,4 @@ git log --oneline -n 10
 - **Ask when uncertain** - if user requirements are ambiguous, clarify before implementing
 
 ## Last Updated
-2026-01-25 - After filter persistence and PURGE/delete command refactoring
+2026-02-23 - After HTML-to-text conversion fix, display bug fix, and bulk operations refactoring

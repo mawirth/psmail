@@ -360,7 +360,8 @@ src/
   graph.ps1             # Graph API REST helpers
   ui.ps1                # Menu rendering and input
   mail_list.ps1         # Folder listing logic
-  mail_read.ps1         # Message reading and display
+  mail_read.ps1         # Message reading, HTML-to-text conversion, paging
+  message_operations.ps1 # Reusable bulk message operations (delete, move, etc.)
   drafts.ps1            # Draft lifecycle and attachment upload
   editor.ps1            # nvim integration
   attachments.ps1       # Attachment download/save logic
