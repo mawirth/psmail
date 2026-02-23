@@ -582,18 +582,14 @@ function Convert-HtmlToText {
     $text = $text -replace '(?si)<style[^>]*>.*?</style>', ''
     $text = $text -replace '(?si)<head[^>]*>.*?</head>', ''
     
-    # Step 2: Remove tables completely
-    # Marketing emails use tables for layout with single-char cells
-    # Keeping the content creates unreadable single-letter lines
-    # Better to remove tables entirely and show remaining content
-    $hadTables = $text -match '(?si)<table[^>]*>'
-    while ($text -match '(?si)<table[^>]*>') {
-        $text = $text -replace '(?si)<table[^>]*>.*?</table>', ''
-    }
-    # Add note if tables were removed
-    if ($hadTables -and $text.Trim().Length -lt 100) {
-        $text = "[Note: This email contains mainly table-based layout content]`n`n" + $text
-    }
+    # Step 2: Remove table structure but keep content
+    # Just strip the table/tr/td tags, keep everything inside
+    $text = $text -replace '(?si)</?table[^>]*>', ''
+    $text = $text -replace '(?si)</?tbody[^>]*>', ''
+    $text = $text -replace '(?si)</?thead[^>]*>', ''
+    $text = $text -replace '(?si)</?tfoot[^>]*>', ''
+    $text = $text -replace '(?si)</?tr[^>]*>', ' '
+    $text = $text -replace '(?si)</?t[dh][^>]*>', ' '
     
     # Step 3: Decode HTML entities for URL processing
     $text = $text -replace '&amp;', '&'
@@ -615,8 +611,12 @@ function Convert-HtmlToText {
     }
     
     # Step 5: Convert block elements to newlines
-    $text = $text -replace '(?si)</(p|div|h[1-6]|li)>', "`n"
+    # IMPORTANT: </div> becomes SPACE not newline!
+    # Many HTML emails use <div> for layout (single chars in cells), not paragraphs.
+    # Outlook uses <p> for real paragraphs, so </p> correctly creates newlines.
+    $text = $text -replace '(?si)</(p|h[1-6]|li)>', "`n"
     $text = $text -replace '(?si)<br\s*/?>', "`n"
+    $text = $text -replace '(?si)</div>', ' '
     
     # Step 6: Remove ALL remaining HTML tags
     $text = $text -replace '<[^>]+>', ''
@@ -692,7 +692,9 @@ function Show-PagedContent {
             }
         } else {
             # Apply word-wrapping at console width
-            $wrapped = Format-WordWrap -Text $line -Width $consoleWidth
+            # IMPORTANT: @() ensures result is always an array, even for single lines.
+            # Without it, a single string makes WrappedLines[0] return first CHARACTER.
+            $wrapped = @(Format-WordWrap -Text $line -Width $consoleWidth)
             $screenLineInfo += @{
                 WrappedLines = $wrapped
                 ScreenLines = $wrapped.Count
