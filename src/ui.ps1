@@ -149,23 +149,24 @@ function Get-OptimalPageSize {
     #   - 1 column header line ("#  U S A  Date...")
     # = 4 lines
     # 
+    # Optional filter indicator (if active):
+    #   - 1 line "[Filter active: '...']" 
+    #   - 1 blank line
+    # = 2 lines
+    # 
     # Footer/Menu section:
-    #   - 1 blank line before menu
+    #   - 1 blank line before menu (ONLY if there are messages)
+    #   - 1 line "[M] More messages available" (ONLY if NextLink exists)
+    #   - 1 blank line before separator
     #   - 1 separator line (dashes)
     #   - 1 view-specific menu line (e.g., "[L] List [R #] Read...")
     #   - 3 global menu lines (folders, filter/contacts, logout)
     #   - 1 blank line after menu
     #   - 1 prompt line ("> ")
-    # = 8 lines
+    # = 9 lines (worst case with pagination)
     # 
-    # Optional elements (always reserve space):
-    #   - 2 pagination lines (blank + "[M] More messages available")
-    #   - 2 filter indicator lines ("[Filter active: '...']" + blank)
-    # = 4 lines
-    # 
-    # Safety margin: 1 line
-    # 
-    # Total: 4 + 8 + 4 + 1 = 17 lines
+    # Total: 4 + 2 (filter, worst case) + 9 (footer) = 15 lines
+    # Add 2 lines buffer for safety
     
     $reservedLines = 17
     

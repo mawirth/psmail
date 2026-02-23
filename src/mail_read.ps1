@@ -23,7 +23,7 @@ function Invoke-OpenMessage {
         return
     }
     
-    # Display header
+    # Display header (let email content naturally push old menu off screen)
     Write-Host ""
     Write-Host ("=" * 70) -ForegroundColor $Config.Colors.Header
     Write-Host "Subject: " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
@@ -126,8 +126,7 @@ function Invoke-OpenMessage {
     
     # Calculate header lines used
     # (for accurate paging on first page)
-    # Count: blank + top sep + Subject + From +
-    # To + Date + bottom sep + blank = 8 base lines
+    # Count: blank + top sep + Subject + From + To + Date + bottom sep + blank = 8 base lines
     $headerLines = 8
     if ($msg.toRecipients -and $msg.toRecipients.Count -gt 0) {
         $headerLines += 0  # To is already counted
@@ -578,133 +577,76 @@ function Convert-HtmlToText {
     
     $text = $Html
     
-    # FIRST: Decode HTML entities in URLs so that &amp; becomes & for proper URL parsing
-    # This must be done before link extraction
+    # Step 1: Remove problematic elements entirely
+    $text = $text -replace '(?si)<script[^>]*>.*?</script>', ''
+    $text = $text -replace '(?si)<style[^>]*>.*?</style>', ''
+    $text = $text -replace '(?si)<head[^>]*>.*?</head>', ''
+    
+    # Step 2: Remove tables completely
+    # Marketing emails use tables for layout with single-char cells
+    # Keeping the content creates unreadable single-letter lines
+    # Better to remove tables entirely and show remaining content
+    $hadTables = $text -match '(?si)<table[^>]*>'
+    while ($text -match '(?si)<table[^>]*>') {
+        $text = $text -replace '(?si)<table[^>]*>.*?</table>', ''
+    }
+    # Add note if tables were removed
+    if ($hadTables -and $text.Trim().Length -lt 100) {
+        $text = "[Note: This email contains mainly table-based layout content]`n`n" + $text
+    }
+    
+    # Step 3: Decode HTML entities for URL processing
     $text = $text -replace '&amp;', '&'
     $text = $text -replace '&quot;', '"'
     $text = $text -replace '&lt;', '<'
     $text = $text -replace '&gt;', '>'
     
-    # SECOND: Extract and convert links to clickable format BEFORE any other processing
-    # This preserves links in the format "Label <URL>" which is clickable in terminals
-    # Use placeholders to protect angle brackets from being removed as HTML tags
-    
-    # Process links iteratively to unwrap SafeLinks
-    # Pattern for double quotes
-    $doubleQuotePattern = '(?i)<a[^>]*href="([^"]+)"[^>]*>([^<]+)</a>'
-    $linkMatches = [regex]::Matches($text, $doubleQuotePattern)
+    # Step 4: Extract links before removing tags
+    # Convert <a href="URL">Label</a> to "Label <URL>"
+    $linkPattern = '(?i)<a[^>]*href=["'']([^"'']+)["''][^>]*>([^<]+)</a>'
+    $linkMatches = [regex]::Matches($text, $linkPattern)
     foreach ($match in $linkMatches) {
-        $fullMatch = $match.Groups[0].Value
         $url = $match.Groups[1].Value
         $label = $match.Groups[2].Value
-        
-        # Unwrap SafeLink from href
         $unwrappedUrl = Unwrap-SafeLink $url
-        
-        # Also check if label itself is a SafeLink and unwrap it
-        $unwrappedLabel = Unwrap-SafeLink $label
-        
-        # Use the unwrapped URL for display
-        $replacement = "$unwrappedLabel __LINKSTART__$unwrappedUrl`__LINKEND__"
-        $text = $text.Replace($fullMatch, $replacement)
+        # Use placeholder to protect angle brackets
+        $replacement = "$label __LINK__$unwrappedUrl`__ENDLINK__"
+        $text = $text.Replace($match.Value, $replacement)
     }
     
-    # Pattern for single quotes
-    $singleQuotePattern = "(?i)<a[^>]*href='([^']+)'[^>]*>([^<]+)</a>"
-    $linkMatches = [regex]::Matches($text, $singleQuotePattern)
-    foreach ($match in $linkMatches) {
-        $fullMatch = $match.Groups[0].Value
-        $url = $match.Groups[1].Value
-        $label = $match.Groups[2].Value
-        
-        # Unwrap SafeLink from href
-        $unwrappedUrl = Unwrap-SafeLink $url
-        
-        # Also check if label itself is a SafeLink and unwrap it
-        $unwrappedLabel = Unwrap-SafeLink $label
-        
-        # Use the unwrapped URL for display
-        $replacement = "$unwrappedLabel __LINKSTART__$unwrappedUrl`__LINKEND__"
-        $text = $text.Replace($fullMatch, $replacement)
-    }
-    
-    # Remove DOCTYPE, XML declarations
-    $text = $text -replace '<!DOCTYPE[^>]*>', ''
-    $text = $text -replace '<\?xml[^>]*\?>', ''
-    
-    # Remove script tags and their content (case insensitive, multiline)
-    $text = $text -replace '(?si)<script[^>]*>.*?</script>', ''
-    
-    # Remove style tags and their content (case insensitive, multiline)
-    $text = $text -replace '(?si)<style[^>]*>.*?</style>', ''
-    
-    # Remove head section entirely
-    $text = $text -replace '(?si)<head[^>]*>.*?</head>', ''
-    
-    # Remove CSS in style attributes
-    $text = $text -replace '\s+style="[^"]*"', ''
-    $text = $text -replace "\s+style='[^']*'", ''
-    
-    # Remove other common attributes that don't affect content
-    $text = $text -replace '\s+class="[^"]*"', ''
-    $text = $text -replace '\s+id="[^"]*"', ''
-    $text = $text -replace '\s+data-[a-z-]+="[^"]*"', ''
-    
-    # Replace block-level elements with newlines
-    $text = $text -replace '(?si)</?(p|div|h[1-6]|section|article|header|footer|nav|aside|main)[^>]*>', "`n"
+    # Step 5: Convert block elements to newlines
+    $text = $text -replace '(?si)</(p|div|h[1-6]|li)>', "`n"
     $text = $text -replace '(?si)<br\s*/?>', "`n"
-    $text = $text -replace '(?si)</tr>', "`n"
-    $text = $text -replace '(?si)</li>', "`n"
     
-    # Add spacing for table cells
-    $text = $text -replace '(?si)</?t[dh][^>]*>', ' '
-    
-    # Remove all remaining HTML tags
+    # Step 6: Remove ALL remaining HTML tags
     $text = $text -replace '<[^>]+>', ''
     
-    # Decode HTML entities
+    # Step 7: Decode HTML entities
     $text = $text -replace '&nbsp;', ' '
     $text = $text -replace '&lt;', '<'
     $text = $text -replace '&gt;', '>'
     $text = $text -replace '&amp;', '&'
     $text = $text -replace '&quot;', '"'
     $text = $text -replace '&#39;', "'"
-    $text = $text -replace '&apos;', "'"
-    $text = $text -replace '&mdash;', '—'
-    $text = $text -replace '&ndash;', '–'
-    $text = $text -replace '&hellip;', '...'
-    $text = $text -replace '&bull;', '•'
-    $text = $text -replace '&copy;', '©'
-    $text = $text -replace '&reg;', '®'
-    $text = $text -replace '&trade;', '™'
-    
-    # Decode numeric entities
     $text = $text -replace '&#(\d+);', { param($m) [char][int]$m.Groups[1].Value }
     $text = $text -replace '&#x([0-9a-fA-F]+);', { param($m) [char][Convert]::ToInt32($m.Groups[1].Value, 16) }
     
-    # Clean up whitespace
-    $text = $text -replace '[ \t]+', ' '  # Multiple spaces to single space
+    # Step 8: Clean up whitespace
+    $text = $text -replace '[ \t]+', ' '  # Multiple spaces/tabs to single space
     $text = $text -replace ' *\n *', "`n"  # Remove spaces around newlines
     $text = $text -replace '\n{3,}', "`n`n"  # Max 2 consecutive newlines
     
-    # Trim lines
+    # Step 9: Trim empty lines
     $lines = $text -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
     $text = $lines -join "`n"
     
-    # Restore angle brackets for clickable links
-    $text = $text -replace '__LINKSTART__', '<'
-    $text = $text -replace '__LINKEND__', '>'
+    # Step 10: Restore links with angle brackets
+    $text = $text -replace '__LINK__', ' <'
+    $text = $text -replace '__ENDLINK__', '>'
     
-    # FINAL PASS: Unwrap any remaining SafeLinks that appear as plain text
-    # This catches SafeLinks that weren't in <a> tags
-    # Match regional SafeLink domains like nor01.safelinks.protection.outlook.com
-    $safelinkPattern = 'https?://[^\s<>]*([a-z0-9-]+\.)?safelinks\.protection\.outlook\.com[^\s<>]*'
-    $safelinkMatches = [regex]::Matches($text, $safelinkPattern)
-    foreach ($slMatch in $safelinkMatches) {
-        $safeUrl = $slMatch.Value
-        $unwrapped = Unwrap-SafeLink $safeUrl
-        $text = $text.Replace($safeUrl, $unwrapped)
-    }
+    # Step 11: Unwrap remaining SafeLinks in plain text
+    $safelinkPattern = 'https?://[^\s<>]*safelinks\.protection\.outlook\.com[^\s<>]*'
+    $text = [regex]::Replace($text, $safelinkPattern, { param($m) Unwrap-SafeLink $m.Value })
     
     return $text.Trim()
 }
@@ -731,8 +673,10 @@ function Show-PagedContent {
     if ($consoleHeight -le 0) { $consoleHeight = 25 }
     if ($consoleWidth -le 0) { $consoleWidth = 80 }
     
-    # Available screen lines per page (minus space for navigation prompt)
-    $availableLines = $consoleHeight - 3
+    # Available screen lines per page (for subsequent pages)
+    # On subsequent pages, we fill entire screen with content + More prompt.
+    # No header, no footer menu, no main menu visible.
+    $availableLines = $consoleHeight - 3  # Just reserve space for More prompt
     
     # Split content into logical lines
     $logicalLines = $Content -split "`n"
@@ -759,15 +703,25 @@ function Show-PagedContent {
     # Calculate total screen lines
     $totalScreenLines = ($screenLineInfo | Measure-Object -Property ScreenLines -Sum).Sum
     
-    # For first page, reduce available lines by header and footer
-    $firstPageAvailableLines = $availableLines - $HeaderLinesUsed - $FooterLinesUsed
-    if ($firstPageAvailableLines -lt 5) { $firstPageAvailableLines = 5 }  # Minimum 5 lines
+    # For first page: Calculate exact lines to display
+    #
+    # Output sequence in Invoke-OpenMessage:
+    #   1. Email header ($HeaderLinesUsed lines)
+    #   2. Email body (X screen lines - what we're calculating)
+    #   3. Footer REPLY/FORWARD menu ($FooterLinesUsed lines)
+    #
+    # Note: Main menu is output AFTER this function returns, not during.
+    # We want to fill the screen to push old content away while keeping header visible.
+    #
+    # Maximum before header scrolls off: Header + Body <= ConsoleHeight
+    # But we also output Footer after body, so: Header + Body + Footer
+    #
+    # To fill screen: Body = ConsoleHeight - Header - Footer
+    #
+    $firstPageAvailableLines = $consoleHeight - $HeaderLinesUsed - $FooterLinesUsed
     
-    # If content fits on one screen (considering header and footer), just display it
-    if ($totalScreenLines -le $firstPageAvailableLines) {
-        Write-Host $Content
-        return
-    }
+    # Ensure minimum
+    if ($firstPageAvailableLines -lt 5) { $firstPageAvailableLines = 5 }
     
     # Paging mode
     $currentLogicalLine = 0
@@ -775,28 +729,60 @@ function Show-PagedContent {
     $isFirstPage = $true
     
     while ($currentLogicalLine -lt $totalLogicalLines) {
+        # Re-query console height for each page in case window size changed
+        if (-not $isFirstPage) {
+            $consoleHeight = $Host.UI.RawUI.WindowSize.Height
+            if ($consoleHeight -le 0) { $consoleHeight = 25 }
+            $availableLines = $consoleHeight - 3 - $FooterLinesUsed
+        }
+        
         # Determine available lines for this page
         $pageLinesAvailable = if ($isFirstPage) { $firstPageAvailableLines } else { $availableLines }
         
         # Determine how many logical lines fit in the current page
+        # We track both complete and partial logical lines
         $screenLinesUsed = 0
         $endLogicalLine = $currentLogicalLine
+        $partialWrappedLineCount = 0  # If > 0, only show this many wrapped lines from last logical line
         
-        while ($endLogicalLine -lt $totalLogicalLines -and 
-               ($screenLinesUsed + $screenLineInfo[$endLogicalLine].ScreenLines) -le $pageLinesAvailable) {
-            $screenLinesUsed += $screenLineInfo[$endLogicalLine].ScreenLines
-            $endLogicalLine++
+        while ($endLogicalLine -lt $totalLogicalLines) {
+            $linesNeeded = $screenLineInfo[$endLogicalLine].ScreenLines
+            
+            if ($screenLinesUsed + $linesNeeded -le $pageLinesAvailable) {
+                # Entire logical line fits
+                $screenLinesUsed += $linesNeeded
+                $endLogicalLine++
+                $partialWrappedLineCount = 0
+            } else {
+                # Logical line doesn't fit completely
+                $remainingSpace = $pageLinesAvailable - $screenLinesUsed
+                
+                if ($remainingSpace -gt 0) {
+                    # Show partial wrapped lines from this logical line
+                    $partialWrappedLineCount = $remainingSpace
+                    $endLogicalLine++
+                }
+                break
+            }
         }
         
-        # If no lines fit (single line too long), show at least one line
+        # If no lines fit at all, show at least first logical line (partial if needed)
         if ($endLogicalLine -eq $currentLogicalLine) {
             $endLogicalLine = $currentLogicalLine + 1
+            $partialWrappedLineCount = [Math]::Min($pageLinesAvailable, $screenLineInfo[$currentLogicalLine].ScreenLines)
         }
         
         # Display lines for this page
         for ($i = $currentLogicalLine; $i -lt $endLogicalLine; $i++) {
-            foreach ($wrappedLine in $screenLineInfo[$i].WrappedLines) {
-                Write-Host $wrappedLine
+            $isLastLogicalLine = ($i -eq $endLogicalLine - 1)
+            $linesToShow = if ($isLastLogicalLine -and $partialWrappedLineCount -gt 0) {
+                $partialWrappedLineCount
+            } else {
+                $screenLineInfo[$i].WrappedLines.Count
+            }
+            
+            for ($j = 0; $j -lt $linesToShow; $j++) {
+                Write-Host $screenLineInfo[$i].WrappedLines[$j]
             }
         }
         
