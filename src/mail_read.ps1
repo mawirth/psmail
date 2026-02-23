@@ -636,8 +636,9 @@ function Convert-HtmlToText {
     $text = $text -replace ' *\n *', "`n"  # Remove spaces around newlines
     $text = $text -replace '\n{3,}', "`n`n"  # Max 2 consecutive newlines
     
-    # Step 9: Trim empty lines
-    $lines = $text -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+    # Step 9: Trim whitespace from each line (keep blank lines for paragraph spacing)
+    # Step 8 already ensures max 1 blank line between paragraphs
+    $lines = $text -split "`n" | ForEach-Object { $_.Trim() }
     $text = $lines -join "`n"
     
     # Step 10: Restore links with angle brackets
