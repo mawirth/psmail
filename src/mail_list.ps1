@@ -255,15 +255,15 @@ function Invoke-RefreshMessageList {
         }
     }
     
-    # Show load message if we loaded new messages
-    if ($loadedCount -gt 0) {
-        Write-Host "Loaded $loadedCount new message(s)" -ForegroundColor $Config.Colors.Success
-        Write-Host ""
-    }
-    
     # Display the refreshed message list
     Show-CurrentView
     Show-MessageList
+    
+    # Show load message after list if we loaded new messages
+    if ($loadedCount -gt 0) {
+        Write-Host ""
+        Write-Host "Loaded $loadedCount new message(s)" -ForegroundColor $Config.Colors.Success
+    }
 }
 
 function Switch-ToFolder {
