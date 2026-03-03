@@ -628,8 +628,8 @@ function Convert-HtmlToText {
     $text = $text -replace '&amp;', '&'
     $text = $text -replace '&quot;', '"'
     $text = $text -replace '&#39;', "'"
-    $text = $text -replace '&#(\d+);', { param($m) [char][int]$m.Groups[1].Value }
-    $text = $text -replace '&#x([0-9a-fA-F]+);', { param($m) [char][Convert]::ToInt32($m.Groups[1].Value, 16) }
+    $text = $text -replace '&#(\d+);', { param($m) if ($m.Groups -and $m.Groups[1]) { [char][int]$m.Groups[1].Value } else { $m.Value } }
+    $text = $text -replace '&#x([0-9a-fA-F]+);', { param($m) if ($m.Groups -and $m.Groups[1]) { [char][Convert]::ToInt32($m.Groups[1].Value, 16) } else { $m.Value } }
     
     # Step 8: Clean up whitespace
     $text = $text -replace '[ \t]+', ' '  # Multiple spaces/tabs to single space
