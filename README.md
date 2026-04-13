@@ -7,576 +7,124 @@ using **Microsoft Graph API**.
 
 ## Features
 
-- **Draft-first workflow**: All new emails are created as drafts first
-- **nvim integration**: Compose and edit emails in Neovim
-- **Microsoft Graph**: Modern API for Outlook.com
-- **Reply & Forward**: Reply, Reply All, and Forward with quoted text
-- **Attachments**: Upload files when composing, save received attachments
-- **Contact search**: Search and copy email addresses from your email history
-- **Paging**: Long emails are displayed page by page
-- **HTML cleanup**: Automatic conversion of HTML emails to clean text
-- **S/MIME support**: Verify incoming signed emails (trusted/untrusted/invalid)
-  and sign/encrypt outgoing emails using Windows Certificate Store
-- **Folder management**: Inbox, Drafts, Sent, Deleted, Junk
-- **Session management**: Stay logged in or logout to switch accounts
-- **Text-only**: Clean, distraction-free email composition
-- **No local sync**: All operations are server-side
+- **Draft-first workflow** — all new emails are created as drafts first
+- **nvim integration** — compose and edit in Neovim
+- **Reply, Forward, Redraft** — with quoted text and attachment copy
+- **Attachments** — upload when composing, save received files
+- **Contact search** — search email history, copy address to clipboard
+- **Filtering** — search by sender, subject, or body across all folders
+- **S/MIME** — verify incoming signatures, sign and encrypt outgoing mail
+- **HTML cleanup** — converts HTML emails to readable plain text
+- **Folder management** — Inbox, Drafts, Sent, Deleted, Junk
+- **Text-only, no local sync** — server-side operations via Graph API
 
 ## Requirements
 
-- **PowerShell 7+** (pwsh)
-- **Neovim** (nvim) installed and in PATH
-- **Microsoft Graph Authentication module** (auto-installed on first run)
-- **Microsoft account** (Outlook.com, Hotmail.com, or Microsoft 365/office.com)
+- **PowerShell 7+** (`pwsh`)
+- **Neovim** (`nvim`) in PATH
+- **Microsoft account** (Outlook.com, Hotmail.com, Microsoft 365)
+- Microsoft.Graph.Authentication module (auto-installed on first run)
 
 ## Installation
 
-1. Clone or download this repository
-2. Ensure PowerShell 7+ is installed:
-   ```powershell
-   pwsh --version
-   ```
-3. Ensure nvim is installed:
-   ```powershell
-   nvim --version
-   ```
-4. Navigate to the project directory
-
-## Usage
-
-### Start psmail
-
 ```powershell
+git clone https://github.com/mawirth/psmail
+cd psmail
 pwsh psmail.ps1
 ```
 
-On first run, you will be prompted to:
-- Install Microsoft.Graph.Authentication module (if not present)
-- Sign in to your Microsoft account via browser
-- Grant permissions (Mail.ReadWrite, Mail.Send, User.Read)
+On first run a browser opens for Microsoft account login. Credentials are
+cached by Windows WAM — subsequent starts connect automatically.
 
-### Commands
-
-#### Global Navigation
-- `I` - Switch to Inbox
-- `D` - Switch to Drafts
-- `S` - Switch to Sent
-- `G` - Switch to Deleted (formerly Trash)
-- `J` - Switch to Junk (Spam)
-- `CONTACTS` - Search contacts and copy email address
-- `SMIME` - Show available S/MIME signing certificates
-- `LOGOUT` - Disconnect and clear session (to switch accounts)
-- `Q` - Quit (keeps session active)
-
-#### Common Commands
-- `L` - List/refresh current folder
-- `R <#>` - Read message by number
-- `M` - Load next page of messages
-- `FILTER <suchtext>` - Filter messages by search term (searches From, Subject, Body)
-- `CLEAR` - Remove active filter
-
-#### Inbox
-- `X <#>` or `X <#-#>` - Delete message(s) (move to Deleted)
-- `K <#>` or `K <#-#>` - Mark as Junk
-
-#### Drafts
-- `NEW` - Create new draft
-- `E <#>` - Edit existing draft
-- `SEND <#>` - Send draft
-- `X <#>` or `X <#-#>` - Delete draft(s)
-
-#### Sent
-- `R <#>` - Read sent message
-- `REDRAFT <#>` - Copy to drafts for resending (includes recipients and attachments)
-- `X <#>` or `X <#-#>` - Delete sent message(s) (move to Deleted)
-
-#### Deleted
-- `RESTORE <#>` or `RESTORE <#-#>` - Move back to Inbox
-- `PURGE <#>` or `PURGE <#-#>` - Delete permanently (only available in Deleted folder)
-
-#### Junk
-- `INBOX <#>` or `INBOX <#-#>` - Move to Inbox (mark as not junk)
-- `X <#>` or `X <#-#>` - Delete (move to Deleted)
-
-#### When Viewing a Message
-- `REPLY` - Reply to sender
-- `REPLYALL` - Reply to all recipients
-- `FORWARD` - Forward message
-- `ATT` - List attachments
-- `SAVE <#>` - Save specific attachment
-- `SAVEALL` - Save all non-inline attachments
-
-### Bulk Operations (Range Support)
-
-Many commands support bulk operations using various input formats:
-
-**Single message:**
-```
-> X 3
-```
-Deletes message #3
-
-**Range of messages:**
-```
-> X 2-5
-```
-Deletes messages #2, #3, #4, and #5
-
-**Reversed range (automatic correction):**
-```
-> X 5-2
-```
-Same as `X 2-5` - automatically sorts the range
-
-**Comma-separated list:**
-```
-> X 3,1,5
-```
-Deletes messages #1, #3, and #5 (automatically sorted and deduplicated)
-
-**Mixed ranges and lists:**
-```
-> X 1,3-5,7
-```
-Deletes messages #1, #3, #4, #5, and #7
-
-**With spaces (optional):**
-```
-> X 3, 1, 5
-```
-Spaces around commas are automatically handled
-
-**Duplicate handling:**
-```
-> X 3,5,3,1
-```
-Duplicates are automatically removed - deletes #1, #3, #5
-
-**Commands supporting bulk operations:**
-- `X` - Delete/move to deleted (not available in Deleted folder)
-- `K` - Move to Junk (from Inbox only)
-- `INBOX` - Move to Inbox (from Junk only)
-- `RESTORE` - Restore from Deleted (Deleted folder only)
-- `PURGE` - Permanently delete (Deleted folder only)
-
-**Confirmation:**
-All bulk operations show a list of affected messages and require confirmation before proceeding.
-
-### Contact Search
-- `CONTACTS` - Search your email history for contacts
-- Enter search term or press Enter for all
-- Select number to copy email address to clipboard
-
-## Message Filtering
-
-The filter feature allows you to search and filter emails in all folders (Inbox, Drafts, Sent, Deleted, Junk).
-
-### Using Filters
-
-**Activate a filter:**
-```
-> FILTER john
-```
-Shows only emails containing "john" in the sender (email address and name), subject, or body.
-
-**Remove filter:**
-```
-> CLEAR
-```
-Displays all emails again.
-
-### Filter Behavior
-
-- **Search is case-insensitive**: Ignores uppercase/lowercase
-- **Substring matching**: Finds partial matches
-- **Multi-field search**: Searches From, Subject, and Body simultaneously
-- **Filter indicator**: Active filters are displayed in yellow above the message list: `[Filter active: 'searchtext']`
-- **Pagination works with filters**: Use `M` to load additional filtered results
-- **Persistent across folders**: Filters remain active when switching between folders (Inbox, Drafts, Sent, Deleted, Junk)
-- **Manual clearing required**: Use `CLEAR` to remove the active filter
-
-### Performance
-
-- Loads only enough emails to fill the visible list
-- Processes emails in batches of 50 for large mailboxes
-- Maximum 10 batches searched to avoid excessive API calls
-- Uses client-side filtering (Microsoft Graph API doesn't support body content filtering)
-
-## Email Composition
-
-### Creating a Draft
-
-1. Switch to Drafts folder: `D`
-2. Create new draft: `NEW`
-3. Neovim opens with template:
-
-```
-To: 
-Subject: 
-Attachments: 
-Sign: no
-Encrypt: no
-
----
-
-```
-
-4. Fill in recipients (comma or semicolon separated)
-5. Add subject
-6. **Optional**: Add attachment paths (comma-separated, supports `~` and relative paths)
-7. **Optional**: Set `Sign: yes` and/or `Encrypt: yes` for S/MIME
-8. Write message body below `---` separator
-9. Save and quit (`:wq`)
-10. Footer is automatically appended on first save
-11. Attachments are validated and uploaded automatically
-
-### Editing a Draft
-
-1. In Drafts folder, run: `E <number>`
-2. Edit in Neovim
-3. Save changes (`:wq`) or cancel (`:q!`)
-
-### Sending
-
-1. In Drafts folder: `SEND <number>`
-2. Confirm when prompted
-3. Message is sent and moved to Sent Items
-
-### Redrafting Sent Messages
-
-You can copy a sent message back to drafts for resending:
-
-1. Switch to Sent folder: `S`
-2. Run: `REDRAFT <number>`
-3. A new draft is created with:
-   - Subject prefixed with `Fwd:`
-   - Original message body
-   - All recipients (To, CC, BCC)
-   - All attachments copied
-4. Switch to Drafts (`D`) to edit or send the new draft
-
-### Attachments
-
-You can attach files when composing emails:
-
-```
-Attachments: ~/Desktop/report.pdf, image.png, C:\path\to\file.zip
-```
-
-- Supports absolute paths, relative paths, and `~` (home directory)
-- Multiple files separated by comma or semicolon
-- Files are validated before the draft is created
-- Attachments are saved to `attachments/` folder when downloading
-- Duplicate filenames get numbered: `file (1).pdf`, `file (2).pdf`
-
-### Footer
-
-The file `data/footer.txt` contains your email signature. It is automatically
-appended to new drafts. Edit this file to customize your signature.
-
-### HTML Footer with Logo
-
-You can optionally use an HTML footer with an embedded logo. When `data/footer.html` exists, all emails are automatically sent as HTML instead of plain text.
-
-**Create an HTML footer:**
+## Quick Start
 
 ```powershell
-.\tools\Create-HtmlFooter.ps1 `
-    -Name "Your Name" `
-    -Title "Your Title" `
-    -Email "your@email.com" `
-    -Website "https://yourwebsite.com" `
-    -LogoPath "path\to\logo.png"
+pwsh psmail.ps1          # start
+pwsh psmail.ps1 -Version # show version
 ```
 
-**Features:**
-- Rich text footer with formatting and links
-- Inline logo embedded as data URI (no separate attachment)
-- Automatic conversion: your plain text from neovim → HTML email
-- Compatible with all major email clients (Outlook, Gmail, Apple Mail, etc.)
+| Key | Action |
+|-----|--------|
+| `I` / `D` / `S` / `G` / `J` | Switch folder (Inbox / Drafts / Sent / Deleted / Junk) |
+| `L` | List / refresh |
+| `R <#>` | Read message |
+| `M` | Load next page |
+| `X <#>` | Delete (supports ranges: `X 2-5`, `X 1,3,7`) |
+| `NEW` | New draft (Drafts only) |
+| `E <#>` | Edit draft |
+| `SEND <#>` | Send draft |
+| `REPLY` / `REPLYALL` / `FORWARD` | When viewing a message |
+| `FILTER <text>` | Filter by sender/subject/body |
+| `CLEAR` | Remove filter |
+| `CONTACTS` | Search contacts |
+| `SMIME` | Show S/MIME certificates |
+| `LOGOUT` | Disconnect |
+| `Q` | Quit |
 
-**Logo guidelines:**
-- Format: PNG (recommended) or JPG
-- Size: Under 50 KB (warns if over 100 KB)
-- Dimensions: 120-200 pixels wide
+→ Full command reference: **[docs/commands.md](docs/commands.md)**
 
-**Switch back to plain text:**
-```powershell
-Remove-Item data\footer.html
-```
-
-For detailed instructions and customization options, see `tools/README.md`.
-
-## Message List Format
-
-### Inbox
-
-```
-#  U E S A  Date               From              Subject
-1  *   ✔ *  2026-01-22 12:30   alice@x.de        Signed mail with attachment
-2     E    2026-01-22 11:10   bob@y.de          Encrypted message
-3       ~  2026-01-22 10:40   eve@z.de          Untrusted sig
-4          2026-01-22 09:00   carl@k.de         Normal mail
-```
-
-**Columns:**
-- `#` - Message number
-- `U` - Unread indicator (`*` = unread)
-- `E` - Encrypted indicator (Inbox only): `E` = S/MIME encrypted, ` ` = not encrypted
-- `S` - S/MIME signature status (Inbox only, populated after opening a message):
-  - `✔` - Signed and trusted (chain valid, revocation OK)
-  - `~` - Signed, untrusted (chain issue or revocation unavailable)
-  - `✖` - Signed, invalid (broken signature or expired certificate)
-  - ` ` (blank) - Not signed / not yet verified
-- `A` - Attachment indicator (`*` = has attachments)
-
-> **Note**: S/MIME status is verified when a message is opened for the first
-> time (one extra API call). The result is cached for the session, so the
-> icon appears in the list after you have opened the message.
-
-### Other Folders
-
-Similar format without S/MIME column.
-
-## S/MIME
-
-psmail supports S/MIME for both incoming verification and outgoing
-signing/encryption, using the **Windows Certificate Store** (`certmgr.msc`).
-
-### Incoming: Signature Verification
-
-When you open an inbox message, psmail automatically:
-1. Fetches the raw MIME content
-2. Detects `multipart/signed` (detached) or `application/pkcs7-mime` (opaque)
-3. Verifies the cryptographic signature via .NET `SignedCms`
-4. Validates the certificate chain against Windows root certificates
-5. Performs an online revocation check (OCSP/CRL)
-6. Displays the result below the message header:
+## Message List (Inbox)
 
 ```
-Signature:   Trusted [S/MIME]
-Signer:      Max Mustermann
-Issued by:   D-TRUST GmbH
-Valid until: 2027-03-15
+#  U E S A  Date              From               Subject
+1  *   ✔ *  2026-01-22 12:30  alice@example.com  Signed mail
+2     E      2026-01-22 11:10  bob@example.com    Encrypted
+3       ~    2026-01-22 10:40  eve@example.com    Untrusted sig
+4            2026-01-22 09:00  carl@example.com   Normal mail
 ```
 
-Verification results are cached per session — no repeated API calls.
+`U` = unread · `E` = encrypted · `S` = signing status (✔ trusted / ~ untrusted / ✖ invalid) · `A` = attachment
 
-### Outgoing: Signing and Encryption
+S/MIME status is verified on first open and cached for the session.
 
-Set `Sign: yes` and/or `Encrypt: yes` in the draft header:
+## Documentation
 
-```
-To: alice@example.com
-Subject: Confidential
-Attachments: 
-Sign: yes
-Encrypt: yes
-
----
-Message body...
-```
-
-When you run `SEND`, psmail will:
-1. Select your signing certificate automatically
-2. Build a complete MIME message (including any attachments)
-3. Sign with SHA-256 / `multipart/signed`
-4. Encrypt with AES-256-CBC for each recipient
-5. Upload the protected MIME back to the draft
-6. Send it
-
-Signing and encrypting can be used independently or together. When both are
-set, the message is signed first, then encrypted (RFC-correct order).
-
-### Certificate Setup
-
-#### Signing certificate (for outgoing)
-
-1. Obtain a personal S/MIME certificate (e.g. from **D-TRUST**, **GlobalSign**,
-   **Sectigo**, **Certum**, etc.)
-2. Open Windows Certificate Manager: `Win+R` → `certmgr.msc`
-3. Navigate to: **Personal → Certificates → Import**
-4. Import your `.p12` / `.pfx` file — it **must include the private key**
-5. Verify with: `SMIME` command in psmail
-
-#### Encryption certificates (for recipients)
-
-To encrypt for a recipient, their **public certificate** must be installed:
-
-1. Obtain the recipient's S/MIME certificate (`.cer` / `.crt`)
-2. Open `certmgr.msc`
-3. Navigate to: **Other People → Certificates → Import**
-4. Import the recipient's public certificate
-
-psmail searches for recipient certificates by email address in the Subject
-Alternative Name (SAN), Subject field, and legacy `E=` attribute.
-
-#### Check available certificates
-
-```
-> SMIME
-```
-
-Shows all valid signing certificates and installation instructions.
-
-### Limitations
-
-- **Encryption requires recipient cert**: The recipient's public certificate
-  must be installed in Windows Certificate Store under "Other People"
-- **Inbox only**: Automatic S/MIME verification applies to Inbox messages;
-  Sent/Drafts do not auto-verify
-- **Exchange stripping**: Exchange/Outlook.com may sometimes strip S/MIME
-  content; if verification shows "None" for a known signed message, this
-  is likely a server-side issue
-- **Decryption**: Encrypted received messages are detected (`E` icon) but
-  cannot be decrypted in the terminal view (Exchange handles decryption
-  server-side for messages addressed to your account)
+| Document | Contents |
+|----------|----------|
+| [docs/commands.md](docs/commands.md) | Full command reference, bulk ops, filtering, composition, attachments |
+| [docs/smime.md](docs/smime.md) | S/MIME verification, signing, encryption, certificate setup |
+| [docs/configuration.md](docs/configuration.md) | Editor, colors, footer, authentication, pagination |
+| [tools/README.md](tools/README.md) | HTML footer with logo |
 
 ## File Structure
 
 ```
-psmail.ps1              # Main entry point
-src/
-  config.ps1            # Configuration and constants
-  state.ps1             # Global state management
-  util.ps1              # Formatting and utility functions
-  auth.ps1              # Microsoft Graph authentication
-  graph.ps1             # Graph API REST helpers
-  ui.ps1                # Menu rendering and input
-  mail_list.ps1         # Folder listing logic
-  mail_read.ps1         # Message reading, HTML-to-text conversion, paging
-  message_operations.ps1 # Reusable bulk message operations (delete, move, etc.)
-  drafts.ps1            # Draft lifecycle and attachment upload
-  editor.ps1            # nvim integration
-  attachments.ps1       # Attachment download/save logic
-  contacts.ps1          # Contact search from email history
-  smime.ps1             # S/MIME verification (incoming) and sign/encrypt (outgoing)
-tools/
-  Create-HtmlFooter.ps1 # Generate HTML footer with logo
-  README.md             # HTML footer documentation
-attachments/            # Downloaded attachments (ignored by git)
-data/
-  footer.txt            # Email signature footer (plain text)
-  footer.html           # HTML footer with logo (optional)
+psmail.ps1        # entry point
+src/              # modules (config, graph, ui, drafts, smime, …)
+docs/             # detailed documentation
+tools/            # Create-HtmlFooter.ps1
+data/             # footer.txt / footer.html (gitignored)
+attachments/      # downloaded attachments (gitignored)
+cert/             # certificate files (gitignored)
 ```
-
-## Configuration
-
-### Custom Editor
-
-To use a different editor, edit `src/config.ps1`:
-
-```powershell
-Editor = "notepad"  # or "code", "vim", etc.
-```
-
-### Page Size
-
-Change number of messages per page in `src/config.ps1`:
-
-```powershell
-PageSize = 50  # Default is 20
-```
-
-### Color Scheme
-
-All colors used in the UI are configurable in `src/config.ps1`. You can customize the color scheme by modifying the `Colors` section:
-
-```powershell
-Colors = @{
-    # Headers and titles
-    Header          = "Cyan"        # Main headers and separators
-    Separator       = "DarkGray"    # Separator lines
-    
-    # Messages and status
-    Success         = "Green"       # Success messages
-    Error           = "Red"         # Error messages
-    Warning         = "Yellow"      # Warning messages
-    Info            = "DarkGray"    # Info messages
-    
-    # List display
-    SubjectHeader   = "DarkGray"    # Column headers in message lists
-    FilterActive    = "Yellow"      # Active filter indicator
-    NoMessages      = "DarkGray"    # "No messages" text
-    LoadingMore     = "Cyan"        # Loading/progress messages
-    
-    # Menu and prompts
-    MenuAction      = "Yellow"      # Menu action items
-    MenuGlobal      = "DarkGray"    # Global navigation menu
-    Prompt          = "Green"       # Command prompt
-    
-    # Message details
-    MessageDetail   = "Cyan"        # Message details in confirmations
-    FieldLabel      = "DarkGray"    # Field labels (From, To, Subject, etc.)
-    
-    # Confirmations
-    ConfirmWarning  = "Yellow"      # Regular confirmation prompts
-    ConfirmDanger   = "Red"         # Dangerous action prompts (e.g. PURGE)
-}
-```
-
-Supported color values: `Black`, `DarkBlue`, `DarkGreen`, `DarkCyan`, `DarkRed`, `DarkMagenta`, `DarkYellow`, `Gray`, `DarkGray`, `Blue`, `Green`, `Cyan`, `Red`, `Magenta`, `Yellow`, `White`
-
-## Authentication & Permissions
-
-psmail uses **device code flow** authentication via Microsoft Graph. On first
-run:
-
-1. A browser opens for login
-2. You sign in with your Microsoft account (consumer or work/school)
-3. You grant the following permissions:
-   - `Mail.ReadWrite` - Read and write mail
-   - `Mail.Send` - Send mail
-   - `User.Read` - Read user profile
-   - `People.Read` - Access contacts (may not work on all consumer accounts)
-   - `Contacts.Read` - Access contacts (fallback)
-
-Credentials are cached by Windows Web Account Manager (WAM) for faster
-re-authentication.
-
-## Limitations
-
-- **Text-only composition** (no HTML)
-- **No inline images on send** (can receive and save them)
-- **No POP/IMAP**
-- **No background sync**
-- **No full TUI widgets** (command-line interface only)
 
 ## Troubleshooting
 
-### Module installation fails
-Run PowerShell as Administrator and manually install:
+**Module install fails** — run PowerShell as Administrator:
 ```powershell
 Install-Module Microsoft.Graph.Authentication -Scope CurrentUser -Force
 ```
 
-### nvim not found
-Ensure Neovim is installed and in PATH:
+**nvim not found:**
 ```powershell
 $env:PATH += ";C:\Program Files\Neovim\bin"
 ```
 
-### Authentication fails
-Try clearing cached credentials:
+**Authentication fails** — clear cached credentials:
 ```powershell
 Disconnect-MgGraph
 ```
-Then restart psmail.
 
-### Graph API errors
-Check your internet connection and Microsoft service status.
+## Limitations
+
+- Text-only composition (no inline HTML on send)
+- No POP/IMAP, no background sync
+- S/MIME encryption requires recipient certificate in Windows cert store
 
 ## License
 
-This is a demonstration project for educational purposes.
-
-## Credits
-
-Built with:
-- Microsoft Graph API
-- PowerShell 7
-- Neovim
+Demonstration project for educational purposes.
 
 ---
 
-**psmail** - Simple, draft-first email for the command line.
+**psmail** — simple, draft-first email for the command line.
