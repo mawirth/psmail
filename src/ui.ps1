@@ -232,6 +232,8 @@ function Show-Menu {
         -ForegroundColor $Config.Colors.MenuGlobal
     Write-Host "[CONTACTS] Search contacts  " `
         -NoNewline -ForegroundColor $Config.Colors.MenuGlobal
+    Write-Host "[SMIME] S/MIME certs  " `
+        -NoNewline -ForegroundColor $Config.Colors.MenuGlobal
     Write-Host "[LOGOUT] Logout  [Q] Quit" `
         -ForegroundColor $Config.Colors.MenuGlobal
     Write-Host ""

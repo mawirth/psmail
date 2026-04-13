@@ -13,6 +13,8 @@ function Invoke-NewDraft {
 To: 
 Subject: 
 Attachments: 
+Sign: no
+Encrypt: no
 
 $separator
 "@
@@ -93,6 +95,12 @@ $separator
     
     Write-Success "Draft created (ID: $($draft.id))"
     
+    # Store S/MIME flags in session state
+    Set-DraftSmimeFlag `
+        -MessageId $draft.id `
+        -Sign      $parsed.Sign `
+        -Encrypt   $parsed.Encrypt
+    
     # Add attachments if any
     if ($resolvedAttachments.Count -gt 0) {
         Write-Host "Uploading $($resolvedAttachments.Count) attachment(s)..." `
@@ -157,6 +165,11 @@ function Invoke-EditDraft {
         }) -join ", "
     }
     
+    # Get current S/MIME flags for this draft
+    $existingFlags = Get-DraftSmimeFlag -MessageId $item.Id
+    $signVal       = if ($existingFlags.Sign)    { "yes" } else { "no" }
+    $encryptVal    = if ($existingFlags.Encrypt) { "yes" } else { "no" }
+    
     # Get body content and convert HTML to text if needed
     $bodyContent = $draft.body.content
     if ($draft.body.contentType -eq "HTML") {
@@ -168,6 +181,8 @@ function Invoke-EditDraft {
 To: $toList
 Subject: $($draft.subject)
 Attachments: $attachmentList
+Sign: $signVal
+Encrypt: $encryptVal
 
 $separator
 $bodyContent
@@ -258,6 +273,12 @@ $bodyContent
     
     Write-Success "Draft updated"
     
+    # Update S/MIME flags
+    Set-DraftSmimeFlag `
+        -MessageId $item.Id `
+        -Sign      $parsed.Sign `
+        -Encrypt   $parsed.Encrypt
+    
     # Handle attachments if modified
     if ($resolvedAttachments.Count -gt 0) {
         Write-Host "Uploading $($resolvedAttachments.Count) attachment(s)..." `
@@ -299,16 +320,40 @@ function Invoke-SendDraft {
         Write-Info "Message has $($attachments.Count) attachment(s)"
     }
     
+    # Check S/MIME flags
+    $smimeFlags = Get-DraftSmimeFlag -MessageId $item.Id
+    $smimeLabel = ""
+    if ($smimeFlags.Sign -or $smimeFlags.Encrypt) {
+        $modes = @()
+        if ($smimeFlags.Sign)    { $modes += "Sign" }
+        if ($smimeFlags.Encrypt) { $modes += "Encrypt" }
+        $smimeLabel = " [S/MIME: $($modes -join '+')]"
+    }
+    
     # Confirm
-    if (-not (Confirm-Action "Send this message?")) {
+    if (-not (Confirm-Action "Send this message?$smimeLabel")) {
         Write-Info "Send cancelled"
         return
+    }
+    
+    # Apply S/MIME if requested
+    if ($smimeFlags.Sign -or $smimeFlags.Encrypt) {
+        $smimeOk = Protect-MessageSmime `
+            -MessageId $item.Id `
+            -Sign      $smimeFlags.Sign `
+            -Encrypt   $smimeFlags.Encrypt
+        
+        if (-not $smimeOk) {
+            Write-Error-Message "S/MIME failed - message not sent."
+            return
+        }
     }
     
     # Send
     $result = Send-GraphMessage -MessageId $item.Id
     
     if ($result -ne $null) {
+        Remove-DraftSmimeFlag -MessageId $item.Id
         Write-Success "Message sent"
         # Refresh list
         Invoke-ListMessages
@@ -340,21 +385,28 @@ function Parse-DraftContent {
     $bodyPart = $Content.Substring($separatorIndex + 4).Trim()
     
     # Parse headers
-    $to = ""
-    $subject = ""
+    $to          = ""
+    $subject     = ""
     $attachments = @()
+    $signStr     = "no"
+    $encryptStr  = "no"
     
     foreach ($line in $headerPart -split "`n") {
         if ($line -match '^To:\s*(.*)$') {
             $to = $matches[1].Trim()
         } elseif ($line -match '^Subject:\s*(.*)$') {
             $subject = $matches[1].Trim()
+        } elseif ($line -match '^Sign:\s*(.*)$') {
+            $signStr = $matches[1].Trim()
+        } elseif ($line -match '^Encrypt:\s*(.*)$') {
+            $encryptStr = $matches[1].Trim()
         } elseif ($line -match '^Attachments:\s*(.*)$') {
             $attLine = $matches[1].Trim()
             # Parse attachment paths (comma or semicolon separated)
             # Skip [existing:...] markers
             if (-not [string]::IsNullOrWhiteSpace($attLine)) {
-                $existingPrefix = [regex]::Escape($Config.EmailTemplates.ExistingAttachmentPrefix)
+                $existingPrefix = [regex]::Escape(
+                    $Config.EmailTemplates.ExistingAttachmentPrefix)
                 
                 $paths = $attLine -split '[,;]' | ForEach-Object {
                     $_.Trim()
@@ -367,11 +419,16 @@ function Parse-DraftContent {
         }
     }
     
+    $sign    = ($signStr.ToLower()    -eq "yes" -or $signStr.ToLower()    -eq "true")
+    $encrypt = ($encryptStr.ToLower() -eq "yes" -or $encryptStr.ToLower() -eq "true")
+    
     return @{
-        To = $to
-        Subject = $subject
-        Body = $bodyPart
+        To          = $to
+        Subject     = $subject
+        Body        = $bodyPart
         Attachments = $attachments
+        Sign        = $sign
+        Encrypt     = $encrypt
     }
 }
 

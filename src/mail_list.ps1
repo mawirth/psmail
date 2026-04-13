@@ -31,10 +31,9 @@ function ConvertTo-MessageItem {
         $item.ToAddress = $Message.toRecipients[0].emailAddress.address
     }
     
-    # Detect S/MIME for inbox messages
-    if ($global:State.View -eq "inbox") {
-        $item.SmimeStatus = Get-MessageSmimeStatus $Message.id
-    }
+    # S/MIME status is verified lazily when a message is opened
+    # (avoids N+1 API calls during inbox listing)
+    $item.SmimeStatus = $Config.SmimeStatus.None
     
     return $item
 }

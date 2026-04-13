@@ -92,6 +92,20 @@ $script:Config = @{
         SignedTrusted    = "SignedTrusted"
         SignedUntrusted  = "SignedUntrusted"
         SignedInvalid    = "SignedInvalid"
+        Encrypted        = "Encrypted"      # Message is S/MIME encrypted
+    }
+    
+    # S/MIME configuration
+    SmimeConfig = @{
+        # OID for emailProtection Extended Key Usage
+        EmailProtectionOid = "1.3.6.1.5.5.7.3.4"
+        
+        # Timeout for online revocation check (seconds)
+        RevocationTimeout = 10
+        
+        # Automatically verify S/MIME when opening inbox messages
+        # (requires one extra Graph API call per message open)
+        AutoVerify = $true
     }
     
     # Color scheme for UI elements

@@ -112,7 +112,9 @@ function Get-Message {
 function Get-MessageMime {
     <#
     .SYNOPSIS
-    Get message MIME content for S/MIME verification
+    Get raw MIME content of a message (RFC 2822 format).
+    Used for S/MIME verification.
+    Returns the raw MIME as a string, or $null on failure.
     #>
     param(
         [Parameter(Mandatory)]
@@ -122,9 +124,12 @@ function Get-MessageMime {
     $uri = "/v1.0/me/messages/$MessageId/`$value"
     
     try {
+        # -OutputType String returns the raw response body as a string
+        # (instead of trying to parse it as JSON)
         return Invoke-MgGraphRequest `
             -Method GET `
             -Uri $uri `
+            -OutputType String `
             -ErrorAction Stop
     } catch {
         return $null

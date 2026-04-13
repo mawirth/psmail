@@ -52,9 +52,26 @@ function Invoke-OpenMessage {
     Write-Host "Date:    " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
     Write-Host (Format-DateTime $receivedDate)
     
-    # S/MIME info
+    # S/MIME verification (inbox only; result is cached per session)
+    $smimeResult = $null
+    if ($global:State.View -eq "inbox" -and $Config.SmimeConfig.AutoVerify) {
+        if (-not $global:State.SmimeCache) { $global:State.SmimeCache = @{} }
+        if ($global:State.SmimeCache.ContainsKey($item.Id)) {
+            $smimeResult = $global:State.SmimeCache[$item.Id]
+        } else {
+            Write-Host "Verifying S/MIME..." `
+                -ForegroundColor $Config.Colors.Info
+            $smimeResult = Get-MessageSmimeStatus -MessageId $item.Id
+            $global:State.SmimeCache[$item.Id] = $smimeResult
+        }
+        $item.SmimeStatus = $smimeResult.Status
+    }
+    
     if ($item.SmimeStatus -ne $Config.SmimeStatus.None) {
-        Show-SmimeInfo -MessageId $item.Id -Status $item.SmimeStatus
+        Show-SmimeInfo `
+            -MessageId $item.Id `
+            -Status    $item.SmimeStatus `
+            -Details   $smimeResult
     }
     
     # Attachments
@@ -132,7 +149,7 @@ function Invoke-OpenMessage {
         $headerLines += 0  # To is already counted
     }
     if ($item.SmimeStatus -ne $Config.SmimeStatus.None) {
-        $headerLines += 3  # S/MIME info adds ~3 lines
+        $headerLines += 5  # S/MIME info: status + signer + issuer + valid + blank
     }
     if ($msg.hasAttachments) {
         $headerLines += 4  # Attachments info adds ~4 lines
@@ -251,6 +268,8 @@ function Invoke-ReplyMessage {
 To: $toList
 Subject: $subject
 Attachments: 
+Sign: no
+Encrypt: no
 
 $separator
 $quotedBody
@@ -339,6 +358,12 @@ $quotedBody
         return
     }
     
+    # Store S/MIME flags
+    Set-DraftSmimeFlag `
+        -MessageId $draft.id `
+        -Sign      $parsed.Sign `
+        -Encrypt   $parsed.Encrypt
+    
     Write-Success "Reply draft created (ID: $($draft.id))"
     
     # Upload attachments
@@ -417,6 +442,8 @@ function Invoke-ForwardMessage {
 To: 
 Subject: $subject
 Attachments: 
+Sign: no
+Encrypt: no
 
 $separator
 $forwardedBody
@@ -504,6 +531,12 @@ $forwardedBody
         Write-Error-Message "Failed to create forward"
         return
     }
+    
+    # Store S/MIME flags
+    Set-DraftSmimeFlag `
+        -MessageId $draft.id `
+        -Sign      $parsed.Sign `
+        -Encrypt   $parsed.Encrypt
     
     Write-Success "Forward draft created (ID: $($draft.id))"
     

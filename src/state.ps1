@@ -10,6 +10,10 @@ function Initialize-State {
         LastQuery      = $null
         OpenMessageId  = $null
         Filter         = $null
+        # S/MIME: per-draft flags (Sign/Encrypt), keyed by message ID
+        SmimeDrafts    = @{}
+        # S/MIME: verification result cache for opened messages
+        SmimeCache     = @{}
     }
 }
 

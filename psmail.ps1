@@ -314,6 +314,10 @@ while ($true) {
             # Search contacts
             Invoke-ContactSearch
         }
+        "SMIME" {
+            # Show available S/MIME certificates
+            Show-SmimeCertificates
+        }
         "FILTER" {
             # Set filter for current folder
             if (-not $arg) {

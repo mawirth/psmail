@@ -37,6 +37,7 @@ function Get-SmimeIcon {
         "SignedTrusted"   { return "✔" }
         "SignedUntrusted" { return "~" }
         "SignedInvalid"   { return "✖" }
+        "Encrypted"       { return "E" }
         default           { return " " }
     }
 }
