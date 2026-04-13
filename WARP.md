@@ -185,7 +185,8 @@ Total: 17 lines
 `Get-ColumnWidths` calculates widths based on actual format strings:
 - Index: `"{0,-2} "` = 3 chars
 - Unread: `"* "` = 2 chars
-- S/MIME (inbox only): `"✔ "` = 2 chars
+- Encrypted (inbox only): `"E "` = 2 chars
+- S/MIME signing (inbox only): `"✔ "` = 2 chars
 - Attachment: `"*  "` = 3 chars
 - Date: `"yyyy-MM-dd HH:mm  "` = 18 chars
 - From/To: `"{0,-18} "` = 19 chars

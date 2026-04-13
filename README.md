@@ -312,21 +312,21 @@ For detailed instructions and customization options, see `tools/README.md`.
 ### Inbox
 
 ```
-#  U S A  Date               From              Subject
-1  * ✔ *  2026-01-22 12:30   alice@x.de        Signed mail with attachment
-2    ~    2026-01-22 11:10   bob@y.de          Untrusted sig
-3    ✖    2026-01-22 10:40   eve@z.de          Broken sig
-4         2026-01-22 09:00   carl@k.de         Normal mail
+#  U E S A  Date               From              Subject
+1  *   ✔ *  2026-01-22 12:30   alice@x.de        Signed mail with attachment
+2     E    2026-01-22 11:10   bob@y.de          Encrypted message
+3       ~  2026-01-22 10:40   eve@z.de          Untrusted sig
+4          2026-01-22 09:00   carl@k.de         Normal mail
 ```
 
 **Columns:**
 - `#` - Message number
 - `U` - Unread indicator (`*` = unread)
-- `S` - S/MIME status (Inbox only, populated after opening a message):
+- `E` - Encrypted indicator (Inbox only): `E` = S/MIME encrypted, ` ` = not encrypted
+- `S` - S/MIME signature status (Inbox only, populated after opening a message):
   - `✔` - Signed and trusted (chain valid, revocation OK)
   - `~` - Signed, untrusted (chain issue or revocation unavailable)
   - `✖` - Signed, invalid (broken signature or expired certificate)
-  - `E` - Encrypted (S/MIME encrypted message)
   - ` ` (blank) - Not signed / not yet verified
 - `A` - Attachment indicator (`*` = has attachments)
 

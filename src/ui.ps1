@@ -22,20 +22,21 @@ function Get-ColumnWidths {
     # From/To: "{0,-18} " = 19 chars
     # Spacing and margins: ~5 chars
     
-    $indexWidth = 3
-    $unreadWidth = 2
-    $smimeWidth = 2
-    $attachWidth = 3
-    $dateWidth = 18
-    $addressWidth = 19
-    $spacing = 5
+    $indexWidth     = 3
+    $unreadWidth    = 2
+    $encryptedWidth = 2   # E column (inbox only)
+    $smimeWidth     = 2   # S column (inbox only)
+    $attachWidth    = 3
+    $dateWidth      = 18
+    $addressWidth   = 19
+    $spacing        = 5
     
     # Calculate fixed width (everything except subject)
     $fixedWidth = $indexWidth + $unreadWidth + $attachWidth + $dateWidth + $addressWidth + $spacing
     
-    # Add S/MIME column for inbox
+    # Add E (encrypted) and S (signing) columns for inbox
     if ($View -eq "inbox") {
-        $fixedWidth += $smimeWidth
+        $fixedWidth += $encryptedWidth + $smimeWidth
     }
     
     # Subject gets remaining space (minimum 30 chars)
@@ -58,7 +59,7 @@ function Render-MessageListHeader {
     param([string]$View)
     
     if ($View -eq "inbox") {
-        Write-Host "#  U S A  Date              From               " `
+        Write-Host "#  U E S A  Date              From               " `
             -NoNewline
         Write-Host "Subject" -ForegroundColor $Config.Colors.SubjectHeader
     } else {
@@ -99,9 +100,15 @@ function Render-MessageRow {
     Write-Host ("{0,-2} " -f $Item.Index) -NoNewline
     Write-Host "$unreadIcon " -NoNewline
     
-    # S/MIME icon (inbox only)
+    # E (encrypted) and S (signing) icons - inbox only
     if ($View -eq "inbox") {
+        $encIcon   = if ($Item.SmimeStatus -eq $Config.SmimeStatus.Encrypted) {
+            "E"
+        } else {
+            " "
+        }
         $smimeIcon = Get-SmimeIcon $Item.SmimeStatus
+        Write-Host "$encIcon " -NoNewline
         Write-Host "$smimeIcon " -NoNewline
     }
     

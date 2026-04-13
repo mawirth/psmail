@@ -31,13 +31,14 @@ function Format-DateOnly {
 }
 
 function Get-SmimeIcon {
+    # Returns signing-only status icon (S column).
+    # Encrypted messages show in the dedicated E column, not here.
     param([string]$Status)
     
     switch ($Status) {
         "SignedTrusted"   { return "✔" }
         "SignedUntrusted" { return "~" }
         "SignedInvalid"   { return "✖" }
-        "Encrypted"       { return "E" }
         default           { return " " }
     }
 }
