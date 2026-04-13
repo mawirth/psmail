@@ -258,7 +258,10 @@ function New-DraftMessage {
 function Get-MessageAttachments {
     <#
     .SYNOPSIS
-    Get all attachments for a message
+    Get all attachments for a message.
+    Always returns a [array] - empty if none, never $null.
+    Normalises the SDK response which may return a single item,
+    an array, or a full OData envelope depending on version.
     #>
     param(
         [Parameter(Mandatory)]
@@ -268,12 +271,18 @@ function Get-MessageAttachments {
     $uri = "/v1.0/me/messages/$MessageId/attachments"
     
     $response = Invoke-GraphRequest -Method GET -Uri $uri
+    if (-not $response) { return @() }
     
-    if (-not $response) {
-        return @()
+    # Unwrap OData envelope when present
+    $raw = if ($response -is [hashtable] -and $response.ContainsKey('value')) {
+        $response['value']
+    } else {
+        $response.value
     }
     
-    return $response.value
+    if (-not $raw) { return @() }
+    # @() wraps single items into arrays; is a no-op for existing arrays
+    return @($raw)
 }
 
 function Get-Attachment {

@@ -16,42 +16,16 @@ function Invoke-SaveAttachment {
         return
     }
     
-    # Get attachments
-    $rawAttachments = Get-MessageAttachments `
-        -MessageId $global:State.OpenMessageId
+    $attachments = Get-MessageAttachments -MessageId $global:State.OpenMessageId
     
-    # Check if it's a single attachment
-    # or array or value wrapper
-    if ($rawAttachments -is [hashtable]) {
-        if ($rawAttachments.ContainsKey('value')) {
-            $attachments = $rawAttachments['value']
-        } elseif ($rawAttachments.ContainsKey('@odata.type')) {
-            $attachments = @($rawAttachments)
-        } else {
-            $attachments = $rawAttachments
-        }
-    } else {
-        $attachments = $rawAttachments
-    }
-    
-    # Ensure we have an array
-    if ($attachments -isnot [System.Array]) {
-        $attachments = @($attachments)
-    }
-    
-    if (-not $attachments -or $attachments.Count -eq 0) {
+    if ($attachments.Count -eq 0) {
         Write-Error-Message "No attachments found"
         return
     }
     
-    # Filter to only file attachments
+    # Filter to file attachments only
     $attachments = @($attachments | Where-Object {
-        $type = if ($_ -is [hashtable]) {
-            $_['@odata.type']
-        } else {
-            $_.'@odata.type'
-        }
-        $type -eq '#microsoft.graph.fileAttachment'
+        $_.'@odata.type' -eq '#microsoft.graph.fileAttachment'
     })
     
     if ($AttachmentIndex -lt 1 -or `
@@ -105,48 +79,16 @@ function Invoke-SaveAllAttachments {
         return
     }
     
-    # Get attachments
-    $rawAttachments = Get-MessageAttachments `
-        -MessageId $global:State.OpenMessageId
+    $attachments = Get-MessageAttachments -MessageId $global:State.OpenMessageId
     
-    # Check if it's a single attachment
-    # or array or value wrapper
-    if ($rawAttachments -is [hashtable]) {
-        if ($rawAttachments.ContainsKey('value')) {
-            $attachments = $rawAttachments['value']
-        } elseif ($rawAttachments.ContainsKey('@odata.type')) {
-            $attachments = @($rawAttachments)
-        } else {
-            $attachments = $rawAttachments
-        }
-    } else {
-        $attachments = $rawAttachments
-    }
-    
-    # Ensure we have an array
-    if ($attachments -isnot [System.Array]) {
-        $attachments = @($attachments)
-    }
-    
-    if (-not $attachments -or $attachments.Count -eq 0) {
+    if ($attachments.Count -eq 0) {
         Write-Error-Message "No attachments found"
         return
     }
     
-    # Filter to file attachments that are not inline
+    # File attachments that are not inline
     $toSave = @($attachments | Where-Object {
-        $type = if ($_ -is [hashtable]) {
-            $_['@odata.type']
-        } else {
-            $_.'@odata.type'
-        }
-        $isInline = if ($_ -is [hashtable]) {
-            $_['isInline']
-        } else {
-            $_.isInline
-        }
-        $type -eq '#microsoft.graph.fileAttachment' `
-            -and -not $isInline
+        $_.'@odata.type' -eq '#microsoft.graph.fileAttachment' -and -not $_.isInline
     })
     
     if ($toSave.Count -eq 0) {
@@ -205,41 +147,16 @@ function Show-Attachments {
         return
     }
     
-    $rawAttachments = Get-MessageAttachments `
-        -MessageId $global:State.OpenMessageId
+    $attachments = Get-MessageAttachments -MessageId $global:State.OpenMessageId
     
-    # Check if it's a single attachment
-    # or array or value wrapper
-    if ($rawAttachments -is [hashtable]) {
-        if ($rawAttachments.ContainsKey('value')) {
-            $attachments = $rawAttachments['value']
-        } elseif ($rawAttachments.ContainsKey('@odata.type')) {
-            $attachments = @($rawAttachments)
-        } else {
-            $attachments = $rawAttachments
-        }
-    } else {
-        $attachments = $rawAttachments
-    }
-    
-    # Ensure we have an array
-    if ($attachments -isnot [System.Array]) {
-        $attachments = @($attachments)
-    }
-    
-    if (-not $attachments -or $attachments.Count -eq 0) {
+    if ($attachments.Count -eq 0) {
         Write-Host "No attachments." -ForegroundColor $Config.Colors.NoMessages
         return
     }
     
     # Filter to file attachments only
     $attachments = @($attachments | Where-Object {
-        $type = if ($_ -is [hashtable]) {
-            $_['@odata.type']
-        } else {
-            $_.'@odata.type'
-        }
-        $type -eq '#microsoft.graph.fileAttachment'
+        $_.'@odata.type' -eq '#microsoft.graph.fileAttachment'
     })
     
     if ($attachments.Count -eq 0) {

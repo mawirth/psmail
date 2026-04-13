@@ -3,7 +3,7 @@
 
 $script:Config = @{
     # Version
-    Version = "1.1-dev"
+    Version = "1.1"
     GitHubUrl = "https://github.com/mawirth/psmail/tree/develop"
     # Graph API scopes required
     # Note: People.Read and Contacts.Read may not work on all consumer accounts

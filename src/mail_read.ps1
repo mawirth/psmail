@@ -78,39 +78,11 @@ function Invoke-OpenMessage {
     if ($msg.hasAttachments) {
         Write-Host ""
         Write-Host "Attachments: " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
-        $rawAttachments = Get-MessageAttachments -MessageId $item.Id
-        
-        # Check if it's a single attachment
-        # (hashtable with @odata.type) or an array,
-        # or a hashtable with 'value' key
-        if ($rawAttachments -is [hashtable]) {
-            if ($rawAttachments.ContainsKey('value')) {
-                # Response with value array
-                $attachments = $rawAttachments['value']
-            } elseif ($rawAttachments.ContainsKey('@odata.type')) {
-                # Single attachment returned directly
-                $attachments = @($rawAttachments)
-            } else {
-                $attachments = $rawAttachments
+        $fileAttachments = @(
+            (Get-MessageAttachments -MessageId $item.Id) | Where-Object {
+                $_.'@odata.type' -eq '#microsoft.graph.fileAttachment'
             }
-        } else {
-            $attachments = $rawAttachments
-        }
-        
-        # Ensure we have an array
-        if ($attachments -isnot [System.Array]) {
-            $attachments = @($attachments)
-        }
-        
-        # Filter to file attachments only
-        $fileAttachments = @($attachments | Where-Object {
-            $type = if ($_ -is [hashtable]) {
-                $_['@odata.type']
-            } else {
-                $_.'@odata.type'
-            }
-            $type -eq '#microsoft.graph.fileAttachment'
-        })
+        )
         
         if ($fileAttachments) {
             Write-Host "$($fileAttachments.Count) file(s)"
@@ -313,77 +285,24 @@ $quotedBody
         $resolvedAttachments = $validationResult.Resolved
     }
     
-    # Create recipients array
-    $toRecipients = @()
-    if (-not [string]::IsNullOrWhiteSpace($parsed.To)) {
-        $separators = $Config.AttachmentsConfig.RecipientSeparators -join ''
-        $toAddresses = $parsed.To -split "[$separators]" | ForEach-Object { 
-            $_.Trim() 
-        }
-        foreach ($addr in $toAddresses) {
-            if (-not [string]::IsNullOrWhiteSpace($addr)) {
-                $toRecipients += @{
-                    emailAddress = @{
-                        address = $addr
-                    }
-                }
-            }
-        }
-    }
-    
-    # Get footer and determine content type
-    $footer = Get-Footer
-    $contentType = "Text"
-    $body = $parsed.Body
-    
-    if ($footer -and $footer.Type -eq "HTML") {
-        # Convert text to HTML and append HTML footer
-        $contentType = "HTML"
-        $body = Convert-TextToHtml $body
-        $body += "`n" + $footer.Content
-    } elseif ($footer) {
-        # Append text footer
-        $body += "`n`n" + $footer.Content
-    }
+    $toRecipients  = ConvertTo-RecipientArray $parsed.To
+    $footerResult  = Apply-DraftFooter $parsed.Body
     
     # Create draft
     $draft = New-DraftMessage `
-        -Subject $parsed.Subject `
-        -Body $body `
+        -Subject      $parsed.Subject `
+        -Body         $footerResult.Body `
         -ToRecipients $toRecipients `
-        -ContentType $contentType
+        -ContentType  $footerResult.ContentType
     
     if (-not $draft) {
         Write-Error-Message "Failed to create reply"
         return
     }
     
-    # Store S/MIME flags
-    Set-DraftSmimeFlag `
-        -MessageId $draft.id `
-        -Sign      $parsed.Sign `
-        -Encrypt   $parsed.Encrypt
-    
+    Set-DraftSmimeFlag -MessageId $draft.id -Sign $parsed.Sign -Encrypt $parsed.Encrypt
     Write-Success "Reply draft created (ID: $($draft.id))"
-    
-    # Upload attachments
-    if ($resolvedAttachments.Count -gt 0) {
-        Write-Host "Uploading $($resolvedAttachments.Count) attachment(s)..." `
-            -ForegroundColor Cyan
-        
-        $uploadedCount = 0
-        foreach ($filePath in $resolvedAttachments) {
-            if (Add-AttachmentToDraft -MessageId $draft.id `
-                -FilePath $filePath) {
-                $fileName = [System.IO.Path]::GetFileName($filePath)
-                Write-Host "  $fileName" -ForegroundColor Green
-                $uploadedCount++
-            }
-        }
-        
-        Write-Success "Uploaded $uploadedCount of $($resolvedAttachments.Count) attachments"
-    }
-    
+    Invoke-UploadAttachments -MessageId $draft.id -FilePaths $resolvedAttachments
     Write-Info "Reply saved in Drafts folder"
 }
 
@@ -487,77 +406,24 @@ $forwardedBody
         $resolvedAttachments = $validationResult.Resolved
     }
     
-    # Create recipients array
-    $toRecipients = @()
-    if (-not [string]::IsNullOrWhiteSpace($parsed.To)) {
-        $separators = $Config.AttachmentsConfig.RecipientSeparators -join ''
-        $toAddresses = $parsed.To -split "[$separators]" | ForEach-Object { 
-            $_.Trim() 
-        }
-        foreach ($addr in $toAddresses) {
-            if (-not [string]::IsNullOrWhiteSpace($addr)) {
-                $toRecipients += @{
-                    emailAddress = @{
-                        address = $addr
-                    }
-                }
-            }
-        }
-    }
-    
-    # Get footer and determine content type
-    $footer = Get-Footer
-    $contentType = "Text"
-    $body = $parsed.Body
-    
-    if ($footer -and $footer.Type -eq "HTML") {
-        # Convert text to HTML and append HTML footer
-        $contentType = "HTML"
-        $body = Convert-TextToHtml $body
-        $body += "`n" + $footer.Content
-    } elseif ($footer) {
-        # Append text footer
-        $body += "`n`n" + $footer.Content
-    }
+    $toRecipients = ConvertTo-RecipientArray $parsed.To
+    $footerResult = Apply-DraftFooter $parsed.Body
     
     # Create draft
     $draft = New-DraftMessage `
-        -Subject $parsed.Subject `
-        -Body $body `
+        -Subject      $parsed.Subject `
+        -Body         $footerResult.Body `
         -ToRecipients $toRecipients `
-        -ContentType $contentType
+        -ContentType  $footerResult.ContentType
     
     if (-not $draft) {
         Write-Error-Message "Failed to create forward"
         return
     }
     
-    # Store S/MIME flags
-    Set-DraftSmimeFlag `
-        -MessageId $draft.id `
-        -Sign      $parsed.Sign `
-        -Encrypt   $parsed.Encrypt
-    
+    Set-DraftSmimeFlag -MessageId $draft.id -Sign $parsed.Sign -Encrypt $parsed.Encrypt
     Write-Success "Forward draft created (ID: $($draft.id))"
-    
-    # Upload attachments
-    if ($resolvedAttachments.Count -gt 0) {
-        Write-Host "Uploading $($resolvedAttachments.Count) attachment(s)..." `
-            -ForegroundColor Cyan
-        
-        $uploadedCount = 0
-        foreach ($filePath in $resolvedAttachments) {
-            if (Add-AttachmentToDraft -MessageId $draft.id `
-                -FilePath $filePath) {
-                $fileName = [System.IO.Path]::GetFileName($filePath)
-                Write-Host "  $fileName" -ForegroundColor Green
-                $uploadedCount++
-            }
-        }
-        
-        Write-Success "Uploaded $uploadedCount of $($resolvedAttachments.Count) attachments"
-    }
-    
+    Invoke-UploadAttachments -MessageId $draft.id -FilePaths $resolvedAttachments
     Write-Info "Forward saved in Drafts folder"
 }
 

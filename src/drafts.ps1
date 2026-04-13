@@ -48,45 +48,17 @@ $separator
         $resolvedAttachments = $validationResult.Resolved
     }
     
-    # Get footer and determine content type
-    $footer = Get-Footer
-    $contentType = "Text"
-    $body = $parsed.Body
-    
-    if ($footer -and $footer.Type -eq "HTML") {
-        # Convert text to HTML and append HTML footer
-        $contentType = "HTML"
-        $body = Convert-TextToHtml $body
-        $body += "`n" + $footer.Content
-    } elseif ($footer) {
-        # Append text footer
-        $body += "`n`n" + $footer.Content
-    }
-    
-    # Create recipients array
-    $toRecipients = @()
-    if (-not [string]::IsNullOrWhiteSpace($parsed.To)) {
-        $separators = $Config.AttachmentsConfig.RecipientSeparators -join ''
-        $toAddresses = $parsed.To -split "[$separators]" | ForEach-Object { 
-            $_.Trim() 
-        }
-        foreach ($addr in $toAddresses) {
-            if (-not [string]::IsNullOrWhiteSpace($addr)) {
-                $toRecipients += @{
-                    emailAddress = @{
-                        address = $addr
-                    }
-                }
-            }
-        }
-    }
+    $footerResult  = Apply-DraftFooter $parsed.Body
+    $contentType   = $footerResult.ContentType
+    $body          = $footerResult.Body
+    $toRecipients  = ConvertTo-RecipientArray $parsed.To
     
     # Create draft via Graph
     $draft = New-DraftMessage `
-        -Subject $parsed.Subject `
-        -Body $body `
+        -Subject      $parsed.Subject `
+        -Body         $body `
         -ToRecipients $toRecipients `
-        -ContentType $contentType
+        -ContentType  $contentType
     
     if (-not $draft) {
         Write-Error-Message "Failed to create draft"
@@ -101,25 +73,7 @@ $separator
         -Sign      $parsed.Sign `
         -Encrypt   $parsed.Encrypt
     
-    # Add attachments if any
-    if ($resolvedAttachments.Count -gt 0) {
-        Write-Host "Uploading $($resolvedAttachments.Count) attachment(s)..." `
-            -ForegroundColor $Config.Colors.LoadingMore
-        
-        $uploadedCount = 0
-        foreach ($filePath in $resolvedAttachments) {
-            if (Add-AttachmentToDraft -MessageId $draft.id `
-                -FilePath $filePath) {
-                $fileName = [System.IO.Path]::GetFileName($filePath)
-                Write-Host "  $fileName" -ForegroundColor $Config.Colors.Success
-                $uploadedCount++
-            } else {
-                Write-Error-Message "Failed to upload: $filePath"
-            }
-        }
-        
-        Write-Success "Uploaded $uploadedCount of $($resolvedAttachments.Count) attachments"
-    }
+    Invoke-UploadAttachments -MessageId $draft.id -FilePaths $resolvedAttachments
 }
 
 function Invoke-EditDraft {
@@ -217,23 +171,7 @@ $bodyContent
         $resolvedAttachments = $validationResult.Resolved
     }
     
-    # Build recipients
-    $toRecipients = @()
-    if (-not [string]::IsNullOrWhiteSpace($parsed.To)) {
-        $separators = $Config.AttachmentsConfig.RecipientSeparators -join ''
-        $toAddresses = $parsed.To -split "[$separators]" | ForEach-Object { 
-            $_.Trim() 
-        }
-        foreach ($addr in $toAddresses) {
-            if (-not [string]::IsNullOrWhiteSpace($addr)) {
-                $toRecipients += @{
-                    emailAddress = @{
-                        address = $addr
-                    }
-                }
-            }
-        }
-    }
+    $toRecipients = ConvertTo-RecipientArray $parsed.To
     
     # Determine if original draft was HTML
     $wasHtml = ($draft.body.contentType -eq "HTML")
@@ -279,25 +217,7 @@ $bodyContent
         -Sign      $parsed.Sign `
         -Encrypt   $parsed.Encrypt
     
-    # Handle attachments if modified
-    if ($resolvedAttachments.Count -gt 0) {
-        Write-Host "Uploading $($resolvedAttachments.Count) attachment(s)..." `
-            -ForegroundColor $Config.Colors.LoadingMore
-        
-        $uploadedCount = 0
-        foreach ($filePath in $resolvedAttachments) {
-            if (Add-AttachmentToDraft -MessageId $item.Id `
-                -FilePath $filePath) {
-                $fileName = [System.IO.Path]::GetFileName($filePath)
-                Write-Host "  $fileName" -ForegroundColor $Config.Colors.Success
-                $uploadedCount++
-            } else {
-                Write-Error-Message "Failed to upload: $filePath"
-            }
-        }
-        
-        Write-Success "Uploaded $uploadedCount of $($resolvedAttachments.Count) attachments"
-    }
+    Invoke-UploadAttachments -MessageId $item.Id -FilePaths $resolvedAttachments
 }
 
 function Invoke-SendDraft {
@@ -352,7 +272,7 @@ function Invoke-SendDraft {
     # Send
     $result = Send-GraphMessage -MessageId $item.Id
     
-    if ($result -ne $null) {
+    if ($null -ne $result) {
         Remove-DraftSmimeFlag -MessageId $item.Id
         Write-Success "Message sent"
         # Refresh list
@@ -382,7 +302,9 @@ function Parse-DraftContent {
     }
     
     $headerPart = $Content.Substring(0, $separatorIndex)
-    $bodyPart = $Content.Substring($separatorIndex + 4).Trim()
+    # Skip past '\n' (1) + separator length to reach the body
+    $bodyPart = $Content.Substring(
+        $separatorIndex + 1 + $separator.Length).Trim()
     
     # Parse headers
     $to          = ""
@@ -430,6 +352,61 @@ function Parse-DraftContent {
         Sign        = $sign
         Encrypt     = $encrypt
     }
+}
+
+function Apply-DraftFooter {
+    <#
+    .SYNOPSIS
+    Apply the email footer to a plain-text body for new drafts, replies
+    and forwards. Returns @{ ContentType = ...; Body = ... }.
+    When an HTML footer exists, the body is converted to HTML first.
+    #>
+    param([string]$BodyText)
+    
+    $footer = Get-Footer
+    
+    if ($footer -and $footer.Type -eq "HTML") {
+        return @{
+            ContentType = "HTML"
+            Body        = (Convert-TextToHtml $BodyText) + "`n" + $footer.Content
+        }
+    }
+    if ($footer) {
+        return @{
+            ContentType = "Text"
+            Body        = $BodyText + "`n`n" + $footer.Content
+        }
+    }
+    return @{ ContentType = "Text"; Body = $BodyText }
+}
+
+function Invoke-UploadAttachments {
+    <#
+    .SYNOPSIS
+    Upload a list of local file paths as attachments to a draft message.
+    Does nothing when the list is empty.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$MessageId,
+        [array]$FilePaths = @()
+    )
+    
+    if (-not $FilePaths -or $FilePaths.Count -eq 0) { return }
+    
+    Write-Host "Uploading $($FilePaths.Count) attachment(s)..." `
+        -ForegroundColor $Config.Colors.LoadingMore
+    
+    $uploaded = 0
+    foreach ($path in $FilePaths) {
+        if (Add-AttachmentToDraft -MessageId $MessageId -FilePath $path) {
+            Write-Host "  $([System.IO.Path]::GetFileName($path))" `
+                -ForegroundColor $Config.Colors.Success
+            $uploaded++
+        } else {
+            Write-Error-Message "Failed to upload: $path"
+        }
+    }
+    Write-Success "Uploaded $uploaded of $($FilePaths.Count) attachments"
 }
 
 function Get-Footer {

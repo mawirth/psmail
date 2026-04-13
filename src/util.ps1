@@ -43,6 +43,27 @@ function Get-SmimeIcon {
     }
 }
 
+function ConvertTo-RecipientArray {
+    <#
+    .SYNOPSIS
+    Convert a comma/semicolon-separated address string to a Graph API
+    toRecipients array. Returns an empty array for blank input.
+    #>
+    param([string]$AddressList)
+    
+    $recipients = @()
+    if ([string]::IsNullOrWhiteSpace($AddressList)) { return $recipients }
+    
+    $sep = $Config.AttachmentsConfig.RecipientSeparators -join ''
+    ($AddressList -split "[$sep]") | ForEach-Object {
+        $addr = $_.Trim()
+        if (-not [string]::IsNullOrWhiteSpace($addr)) {
+            $recipients += @{ emailAddress = @{ address = $addr } }
+        }
+    }
+    return $recipients
+}
+
 function Get-UnreadIcon {
     param([bool]$IsUnread)
     
