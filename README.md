@@ -15,8 +15,8 @@ using **Microsoft Graph API**.
 - **Contact search**: Search and copy email addresses from your email history
 - **Paging**: Long emails are displayed page by page
 - **HTML cleanup**: Automatic conversion of HTML emails to clean text
-- **S/MIME support**: Detect and verify signed emails (Phase 1: detection
-  stubs, Phase 2: full verification, Phase 3: signing/encryption)
+- **S/MIME support**: Verify incoming signed emails (trusted/untrusted/invalid)
+  and sign/encrypt outgoing emails using Windows Certificate Store
 - **Folder management**: Inbox, Drafts, Sent, Deleted, Junk
 - **Session management**: Stay logged in or logout to switch accounts
 - **Text-only**: Clean, distraction-free email composition
@@ -64,6 +64,7 @@ On first run, you will be prompted to:
 - `G` - Switch to Deleted (formerly Trash)
 - `J` - Switch to Junk (Spam)
 - `CONTACTS` - Search contacts and copy email address
+- `SMIME` - Show available S/MIME signing certificates
 - `LOGOUT` - Disconnect and clear session (to switch accounts)
 - `Q` - Quit (keeps session active)
 
@@ -213,6 +214,8 @@ Displays all emails again.
 To: 
 Subject: 
 Attachments: 
+Sign: no
+Encrypt: no
 
 ---
 
@@ -221,10 +224,11 @@ Attachments:
 4. Fill in recipients (comma or semicolon separated)
 5. Add subject
 6. **Optional**: Add attachment paths (comma-separated, supports `~` and relative paths)
-7. Write message body below `---` separator
-8. Save and quit (`:wq`)
-9. Footer is automatically appended on first save
-10. Attachments are validated and uploaded automatically
+7. **Optional**: Set `Sign: yes` and/or `Encrypt: yes` for S/MIME
+8. Write message body below `---` separator
+9. Save and quit (`:wq`)
+10. Footer is automatically appended on first save
+11. Attachments are validated and uploaded automatically
 
 ### Editing a Draft
 
@@ -318,35 +322,115 @@ For detailed instructions and customization options, see `tools/README.md`.
 **Columns:**
 - `#` - Message number
 - `U` - Unread indicator (`*` = unread)
-- `S` - S/MIME signature status (Inbox only):
-  - `✔` - Signed and trusted
+- `S` - S/MIME status (Inbox only, populated after opening a message):
+  - `✔` - Signed and trusted (chain valid, revocation OK)
   - `~` - Signed, untrusted (chain issue or revocation unavailable)
   - `✖` - Signed, invalid (broken signature or expired certificate)
-  - ` ` (blank) - Not signed
+  - `E` - Encrypted (S/MIME encrypted message)
+  - ` ` (blank) - Not signed / not yet verified
 - `A` - Attachment indicator (`*` = has attachments)
+
+> **Note**: S/MIME status is verified when a message is opened for the first
+> time (one extra API call). The result is cached for the session, so the
+> icon appears in the list after you have opened the message.
 
 ### Other Folders
 
-Similar format without S/MIME column (S/MIME verification only in Inbox).
+Similar format without S/MIME column.
 
-## S/MIME Behavior
+## S/MIME
 
-### Phase 1 (Current)
-- **Detection stubs**: Infrastructure in place, always returns "None"
-- **UI ready**: List view shows signature icons, message view shows details
+psmail supports S/MIME for both incoming verification and outgoing
+signing/encryption, using the **Windows Certificate Store** (`certmgr.msc`).
 
-### Phase 2 (Future)
-- **Full verification**: 
-  - Detect `multipart/signed` or `application/pkcs7-mime`
-  - Verify signatures using .NET `SignedCms`
-  - Validate certificate chains against Windows root store
-  - Display signer information (name, issuer, validity)
-  - Handle revocation checking with online fallback
+### Incoming: Signature Verification
 
-### Phase 3 (Future)
-- **Signing**: Sign outgoing messages with certificate from Windows store
-- **Encryption**: Encrypt messages using recipient certificates
-- **Combined**: Sign and encrypt in one operation
+When you open an inbox message, psmail automatically:
+1. Fetches the raw MIME content
+2. Detects `multipart/signed` (detached) or `application/pkcs7-mime` (opaque)
+3. Verifies the cryptographic signature via .NET `SignedCms`
+4. Validates the certificate chain against Windows root certificates
+5. Performs an online revocation check (OCSP/CRL)
+6. Displays the result below the message header:
+
+```
+Signature:   Trusted [S/MIME]
+Signer:      Max Mustermann
+Issued by:   D-TRUST GmbH
+Valid until: 2027-03-15
+```
+
+Verification results are cached per session — no repeated API calls.
+
+### Outgoing: Signing and Encryption
+
+Set `Sign: yes` and/or `Encrypt: yes` in the draft header:
+
+```
+To: alice@example.com
+Subject: Confidential
+Attachments: 
+Sign: yes
+Encrypt: yes
+
+---
+Message body...
+```
+
+When you run `SEND`, psmail will:
+1. Select your signing certificate automatically
+2. Build a complete MIME message (including any attachments)
+3. Sign with SHA-256 / `multipart/signed`
+4. Encrypt with AES-256-CBC for each recipient
+5. Upload the protected MIME back to the draft
+6. Send it
+
+Signing and encrypting can be used independently or together. When both are
+set, the message is signed first, then encrypted (RFC-correct order).
+
+### Certificate Setup
+
+#### Signing certificate (for outgoing)
+
+1. Obtain a personal S/MIME certificate (e.g. from **D-TRUST**, **GlobalSign**,
+   **Sectigo**, **Certum**, etc.)
+2. Open Windows Certificate Manager: `Win+R` → `certmgr.msc`
+3. Navigate to: **Personal → Certificates → Import**
+4. Import your `.p12` / `.pfx` file — it **must include the private key**
+5. Verify with: `SMIME` command in psmail
+
+#### Encryption certificates (for recipients)
+
+To encrypt for a recipient, their **public certificate** must be installed:
+
+1. Obtain the recipient's S/MIME certificate (`.cer` / `.crt`)
+2. Open `certmgr.msc`
+3. Navigate to: **Other People → Certificates → Import**
+4. Import the recipient's public certificate
+
+psmail searches for recipient certificates by email address in the Subject
+Alternative Name (SAN), Subject field, and legacy `E=` attribute.
+
+#### Check available certificates
+
+```
+> SMIME
+```
+
+Shows all valid signing certificates and installation instructions.
+
+### Limitations
+
+- **Encryption requires recipient cert**: The recipient's public certificate
+  must be installed in Windows Certificate Store under "Other People"
+- **Inbox only**: Automatic S/MIME verification applies to Inbox messages;
+  Sent/Drafts do not auto-verify
+- **Exchange stripping**: Exchange/Outlook.com may sometimes strip S/MIME
+  content; if verification shows "None" for a known signed message, this
+  is likely a server-side issue
+- **Decryption**: Encrypted received messages are detected (`E` icon) but
+  cannot be decrypted in the terminal view (Exchange handles decryption
+  server-side for messages addressed to your account)
 
 ## File Structure
 
@@ -366,7 +450,7 @@ src/
   editor.ps1            # nvim integration
   attachments.ps1       # Attachment download/save logic
   contacts.ps1          # Contact search from email history
-  smime.ps1             # S/MIME detection and verification
+  smime.ps1             # S/MIME verification (incoming) and sign/encrypt (outgoing)
 tools/
   Create-HtmlFooter.ps1 # Generate HTML footer with logo
   README.md             # HTML footer documentation

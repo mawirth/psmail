@@ -45,7 +45,7 @@ src/
   editor.ps1            # nvim integration
   attachments.ps1       # Attachment handling
   contacts.ps1          # Contact search from email history
-  smime.ps1             # S/MIME detection and verification
+  smime.ps1             # S/MIME: incoming verification + outgoing sign/encrypt
 ```
 
 ### Key Functions & Their Purpose
@@ -56,6 +56,10 @@ src/
 - `Set-Filter` / `Clear-Filter` - Filter management (persistent across folders)
 - `Reset-StateItems` - Clear message list
 - `Remove-StateItems` - Remove specific messages and re-index
+
+**S/MIME session state fields:**
+- `SmimeDrafts` - `@{}` keyed by message ID: `@{ Sign=bool; Encrypt=bool }`
+- `SmimeCache` - `@{}` keyed by message ID: verification result hashtable
 
 #### UI Rendering (ui.ps1)
 - `Get-ColumnWidths` - Calculate column widths dynamically based on console size
@@ -93,6 +97,29 @@ src/
 - `Remove-Message` - **Important**: Returns `@{ success = $true }` on HTTP 204 (not null)
 - `Move-Message` - Move between folders
 - `Send-GraphMessage` - Send draft
+- `Get-MessageMime` - Raw MIME via `/messages/{id}/$value`; uses `-OutputType String`
+
+#### S/MIME (smime.ps1)
+8 sections:
+1. **MIME parsing**: `Get-MimeHeaderValue`, `Get-MimeBoundary`, `Get-MimeBodySection`, `Split-MimeParts`, `ConvertFrom-Base64Mime`
+2. **Type detection**: `Get-SmimeMimeType` -> `None` | `MultipleSigned` | `OpaqueSign` | `Encrypted`
+3. **Verification**: `Get-MessageSmimeStatus` -> `Invoke-SmimeVerification` -> `Invoke-CmsVerify` (.NET `SignedCms`+`X509Chain`)
+4. **Display**: `Show-SmimeInfo` (optional Details hashtable: Subject, Issuer, ValidUntil, Error); `Extract-CertCN`
+5. **Certs**: `Get-SmimeSigningCertificates` (CurrentUser\My), `Get-SmimeEncryptionCertificate` (AddressBook/My/Root/CA), `Show-SmimeCertificates`, `Get-DefaultSigningCertificate`
+6. **Draft state**: `Set-DraftSmimeFlag`, `Get-DraftSmimeFlag`, `Remove-DraftSmimeFlag`
+7. **MIME build**: `ConvertTo-QuotedPrintable`, `Build-SmimeMimeContent` (body + attachments, CRLF)
+8. **Outgoing**: `New-SmimeSignedMime` (multipart/signed, SHA-256), `New-SmimeEncryptedMime` (AES-256-CBC), `Protect-MessageSmime` (orchestrator), `Upload-MimeDraft` (PUT /$value)
+
+**Key design**: Verification is *lazy* (only on message open, cached in `SmimeCache`). Avoids N+1 API calls during listing.
+**PS limitation**: Do NOT call PowerShell functions (e.g. `New-Object`, `Func -Param val`) directly inside .NET method arguments - use intermediate variables.
+
+### Draft Template
+All templates (NEW, REPLY, FORWARD) include:
+```
+Sign: no
+Encrypt: no
+```
+`Parse-DraftContent` returns `Sign` and `Encrypt` as booleans. `Invoke-SendDraft` calls `Protect-MessageSmime` before `Send-GraphMessage`, then `Remove-DraftSmimeFlag` on success.
 
 ### Important Behavioral Requirements
 
@@ -139,7 +166,7 @@ Footer/Menu: 8 lines
   - 1 blank line before menu
   - 1 separator line
   - 1 view-specific menu line
-  - 3 global menu lines
+  - 3 global menu lines (folders / filter+clear / contacts+smime+logout)
   - 1 blank line after menu
   - 1 prompt line ("> ")
 
@@ -249,16 +276,11 @@ Based on conversations with the user:
 
 ## Future Enhancements (Planned)
 
-### S/MIME (Phase 2)
-- Parse MIME structure to detect `multipart/signed` or `application/pkcs7-mime`
-- Use .NET `System.Security.Cryptography.Pkcs.SignedCms` for verification
-- Validate certificate chains against Windows root store
-- Handle revocation checking (online/offline)
-
-### S/MIME (Phase 3)
-- Sign outgoing messages with user certificate
-- Encrypt messages using recipient certificates
-- Combined sign+encrypt operations
+### S/MIME Follow-ups
+- **Interactive cert picker**: When multiple signing certs exist, show selection menu (currently auto-picks first)
+- **Decryption**: Decrypt incoming encrypted messages (private key must be in store)
+- **Sent folder verification**: Extend lazy verification to Sent folder
+- **Config option**: `DefaultSign = $true` to auto-sign all outgoing drafts
 
 ## Useful Commands for Development
 
@@ -296,4 +318,5 @@ git log --oneline -n 10
 - **Ask when uncertain** - if user requirements are ambiguous, clarify before implementing
 
 ## Last Updated
-2026-02-23 - After HTML-to-text conversion fix, display bug fix, and bulk operations refactoring
+2026-04-13 - S/MIME full implementation (v1.1): incoming verification via .NET SignedCms/X509Chain,
+outgoing sign/encrypt via Windows cert store, draft Sign/Encrypt fields, lazy verification with session cache
