@@ -4,6 +4,9 @@ data/
 # Attachment downloads
 attachments/
 
+# Certificate files (S/MIME key material)
+cert/
+
 # Debug scripts
 debug_attachments.ps1
 debug-safelinks.ps1
