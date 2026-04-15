@@ -59,15 +59,21 @@ Message body...
 
 When you run `SEND`, psmail:
 
-1. Picks your signing certificate automatically (first valid cert in store)
-2. Builds a complete MIME message (body + all attachments)
-3. Signs with SHA-256 → `multipart/signed`
-4. Encrypts with AES-256-CBC → `application/pkcs7-mime`
-5. Uploads the protected MIME back to the draft
-6. Sends
+1. Picks your signing certificate automatically (matched by email address)
+2. Builds the inner MIME message (body base64-encoded + attachments)
+3. Signs with SHA-256 detached signature → `multipart/signed`
+   - Body is base64-encoded for transit stability (not quoted-printable)
+   - The signed bytes follow RFC 2046 §5.1.1 canonicalisation (trailing
+     CRLF before boundary is excluded from the hash)
+   - Intermediate CA certificates (e.g. DigiCert) are embedded via
+     `ExcludeRoot` so recipients can verify the full chain
+4. Encrypts with AES-256-CBC → `application/pkcs7-mime; smime-type=enveloped-data`
+5. Wraps in a complete RFC 2822 envelope (MIME-Version, Date, From, To, Subject)
+6. Sends via `POST /me/sendMail` with base64-encoded MIME body
+   (personal accounts) or `PUT /$value` + `/send` (Microsoft 365 accounts)
 
 Signing and encryption can be used independently or together.
-When both are set, signing happens first, then encryption (RFC-correct order).
+When both are set, signing happens first, then encryption (RFC 5751 order).
 
 Check what certificates are installed:
 
@@ -129,8 +135,16 @@ Submit the CSR to your CA, then import the signed certificate.
 
 - **Encryption requires recipient cert** installed under "Other People"
 - **Inbox only**: auto-verification applies to Inbox; Sent/Drafts don't auto-verify
-- **Exchange stripping**: Outlook.com may occasionally strip S/MIME content
-  server-side; if a known-signed message shows no status, this is likely the cause
 - **Decryption**: Encrypted received messages show the `E` icon but are not
-  decrypted in the terminal — Exchange decrypts server-side for messages
-  addressed to your own account
+  decrypted in the terminal — the mail client decrypts using the local private key
+- **Personal Microsoft accounts** (MSN/Outlook.com): `PUT /$value` is not
+  supported; psmail falls back to `POST /me/sendMail` with base64-encoded MIME
+- **Outlook iOS + personal accounts**: S/MIME decryption in Outlook iOS requires
+  a Microsoft 365 account managed via MDM/Intune; personal account users should
+  use Apple Mail (which supports S/MIME fully with certificates installed as
+  iOS profiles)
+- **Certificate expiry — signing**: old signatures show as unverifiable after
+  expiry, but the message remains readable; renew and re-import the certificate
+- **Certificate expiry — encryption**: the private key for expired certificates
+  must be archived (`.p12` backup) — losing it makes all previously received
+  encrypted messages permanently unreadable

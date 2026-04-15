@@ -51,7 +51,13 @@ $script:Config = @{
     
     # Footer file path (relative to script root)
     FooterPath = Join-Path $PSScriptRoot "..\data\footer.txt"
-    
+
+    # Persisted S/MIME draft flags - survives session restarts.
+    # Stored locally because Outlook.com consumer accounts do not allow
+    # writing custom metadata to Graph messages (categories: 403 Forbidden;
+    # HTML comments are stripped server-side).
+    SmimeDraftsPath = Join-Path $PSScriptRoot "..\data\smime-drafts.json"
+
     # HTML body formatting (when sending HTML emails)
     HtmlBodyStyle = @{
         FontFamily = "Arial"

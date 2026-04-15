@@ -67,7 +67,7 @@ $separator
     
     Write-Success "Draft created (ID: $($draft.id))"
     
-    # Store S/MIME flags in session state
+    # Store S/MIME flags in session state (persisted to disk by Set-DraftSmimeFlag)
     Set-DraftSmimeFlag `
         -MessageId $draft.id `
         -Sign      $parsed.Sign `
@@ -211,7 +211,7 @@ $bodyContent
     
     Write-Success "Draft updated"
     
-    # Update S/MIME flags
+    # Update S/MIME flags (persisted to disk by Set-DraftSmimeFlag)
     Set-DraftSmimeFlag `
         -MessageId $item.Id `
         -Sign      $parsed.Sign `
@@ -267,9 +267,15 @@ function Invoke-SendDraft {
             Write-Error-Message "S/MIME failed - message not sent."
             return
         }
+        # Protect-MessageSmime sends directly and deletes the draft;
+        # skip the normal Send-GraphMessage step.
+        Remove-DraftSmimeFlag -MessageId $item.Id
+        Write-Success "Message sent"
+        Invoke-ListMessages
+        return
     }
     
-    # Send
+    # Non-S/MIME: send via Graph draft endpoint
     $result = Send-GraphMessage -MessageId $item.Id
     
     if ($null -ne $result) {

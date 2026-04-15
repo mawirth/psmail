@@ -38,14 +38,10 @@ function Connect-GraphMail {
         Write-Success "Successfully connected!"
         
         # Show connection info
-        $ctx = Get-MgContext
-        $tenantInfo = if ($ctx.TenantId) { 
-            $ctx.TenantId 
-        } else { 
-            "consumers" 
-        }
-        Write-Info ("Account: {0}  Tenant: {1}" `
-            -f $ctx.Account, $tenantInfo)
+        $ctx     = Get-MgContext
+        $email   = Get-CurrentUserEmail
+        $tenantInfo = if ($ctx.TenantId) { $ctx.TenantId } else { "consumers" }
+        Write-Info ("Account: {0}  Tenant: {1}" -f $email, $tenantInfo)
         
         return $true
         
@@ -53,6 +49,28 @@ function Connect-GraphMail {
         Write-Error-Message "Connection failed: $($_.Exception.Message)"
         return $false
     }
+}
+
+function Get-CurrentUserEmail {
+    <#
+    .SYNOPSIS
+    Return the signed-in user's email address.
+    $ctx.Account is empty for personal MSA (Outlook.com) accounts;
+    falls back to GET /me in that case.
+    #>
+    $ctx = Get-MgContext
+    if (-not [string]::IsNullOrWhiteSpace($ctx.Account)) {
+        return $ctx.Account
+    }
+    try {
+        $me = Invoke-MgGraphRequest `
+            -Method GET `
+            -Uri    "/v1.0/me?`$select=mail,userPrincipalName" `
+            -ErrorAction Stop
+        if ($me.mail)              { return $me.mail }
+        if ($me.userPrincipalName) { return $me.userPrincipalName }
+    } catch { }
+    return ""
 }
 
 function Disconnect-GraphMail {

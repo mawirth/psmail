@@ -2,6 +2,16 @@
 # Global state management
 
 function Initialize-State {
+    # Load persisted S/MIME draft flags (survives session restarts)
+    $smimeDrafts = @{}
+    if (Test-Path $Config.SmimeDraftsPath) {
+        try {
+            $json   = Get-Content $Config.SmimeDraftsPath -Raw -ErrorAction Stop
+            $loaded = $json | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+            if ($loaded) { $smimeDrafts = $loaded }
+        } catch { }
+    }
+
     $global:State = @{
         View           = $Config.Folders.Inbox
         Items          = @()
@@ -10,8 +20,9 @@ function Initialize-State {
         LastQuery      = $null
         OpenMessageId  = $null
         Filter         = $null
-        # S/MIME: per-draft flags (Sign/Encrypt), keyed by message ID
-        SmimeDrafts    = @{}
+        # S/MIME: per-draft flags, keyed by message ID.
+        # Persisted to SmimeDraftsPath so flags survive session restarts.
+        SmimeDrafts    = $smimeDrafts
         # S/MIME: verification result cache for opened messages
         SmimeCache     = @{}
     }

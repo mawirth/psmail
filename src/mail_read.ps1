@@ -183,8 +183,7 @@ function Invoke-ReplyMessage {
     
     # Reply All: add all original recipients except ourselves
     if ($ReplyAll) {
-        $ctx = Get-MgContext
-        $myAddress = $ctx.Account.ToLower()
+        $myAddress = (Get-CurrentUserEmail).ToLower()
         
         if ($msg.toRecipients) {
             foreach ($recipient in $msg.toRecipients) {

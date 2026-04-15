@@ -509,11 +509,39 @@ function Get-SmimeEncryptionCertificate {
 function Get-DefaultSigningCertificate {
     <#
     .SYNOPSIS
-    Return the first available S/MIME signing certificate (no UI).
+    Return the S/MIME signing certificate for the given sender address.
+    Matches Subject Alternative Name (rfc822Name), Subject CN, or E=/EMAIL= field.
+    Falls back to $null if no matching cert is found (no silent fallback to a
+    wrong certificate).
     #>
+    param(
+        [string]$EmailAddress = $null
+    )
+
     $certs = Get-SmimeSigningCertificates
-    if ($certs -and $certs.Count -gt 0) { return $certs[0] }
-    return $null
+    if (-not $certs -or $certs.Count -eq 0) { return $null }
+
+    if ($EmailAddress) {
+        $emailLower = $EmailAddress.ToLower().Trim()
+        $matched = $certs | Where-Object {
+            $c = $_
+            # Subject Alternative Name (rfc822Name)
+            $san = $c.Extensions | Where-Object {
+                $_.Oid.FriendlyName -eq "Subject Alternative Name" }
+            if ($san -and $san.Format($false).ToLower().Contains($emailLower)) {
+                return $true }
+            # Subject field contains email
+            if ($c.Subject.ToLower().Contains($emailLower)) { return $true }
+            # Legacy E= / EMAIL= field in Subject DN
+            if ($c.Subject -match '(?i)(?:E|EMAIL)=([^,]+)') {
+                if ($matches[1].Trim().ToLower() -eq $emailLower) { return $true } }
+            return $false
+        }
+        if ($matched) { return @($matched)[0] }
+        return $null   # no cert for this address - caller must handle
+    }
+
+    return $certs[0]
 }
 
 function Show-SmimeCertificates {
@@ -563,11 +591,26 @@ function Show-SmimeCertificates {
 # ============================================================
 # SECTION 6 - DRAFT S/MIME STATE
 # ============================================================
+# Flags are persisted to data/smime-drafts.json so they survive restarts.
+# Outlook.com consumer accounts do not allow writing custom metadata to
+# Graph messages (categories: 403; HTML comments stripped server-side),
+# so a local file is the only reliable storage option for this tool.
+
+function Save-SmimeDrafts {
+    <#
+    .SYNOPSIS
+    Write the in-memory SmimeDrafts table to disk. Silent on error.
+    #>
+    try {
+        $global:State.SmimeDrafts | ConvertTo-Json -Depth 3 | `
+            Set-Content $Config.SmimeDraftsPath -Encoding UTF8 -ErrorAction Stop
+    } catch { }
+}
 
 function Set-DraftSmimeFlag {
     <#
     .SYNOPSIS
-    Store Sign/Encrypt flags for a draft in the session state.
+    Store Sign/Encrypt flags for a draft and persist them to disk.
     #>
     param(
         [Parameter(Mandatory)][string]$MessageId,
@@ -576,6 +619,7 @@ function Set-DraftSmimeFlag {
     )
     if (-not $global:State.SmimeDrafts) { $global:State.SmimeDrafts = @{} }
     $global:State.SmimeDrafts[$MessageId] = @{ Sign = $Sign; Encrypt = $Encrypt }
+    Save-SmimeDrafts
 }
 
 function Get-DraftSmimeFlag {
@@ -595,12 +639,13 @@ function Get-DraftSmimeFlag {
 function Remove-DraftSmimeFlag {
     <#
     .SYNOPSIS
-    Remove S/MIME flags for a draft after sending.
+    Remove S/MIME flags for a draft after sending and persist the change.
     #>
     param([Parameter(Mandatory)][string]$MessageId)
     if ($global:State.SmimeDrafts -and
         $global:State.SmimeDrafts.ContainsKey($MessageId)) {
         $global:State.SmimeDrafts.Remove($MessageId)
+        Save-SmimeDrafts
     }
 }
 
@@ -608,46 +653,16 @@ function Remove-DraftSmimeFlag {
 # SECTION 7 - OUTGOING MIME BUILDING
 # ============================================================
 
-function ConvertTo-QuotedPrintable {
-    <#
-    .SYNOPSIS
-    Encode a UTF-8 string as quoted-printable (RFC 2045, max 76 chars/line).
-    #>
-    param([string]$Text)
-    if ([string]::IsNullOrEmpty($Text)) { return "" }
-
-    $sb      = [System.Text.StringBuilder]::new()
-    $bytes   = [System.Text.Encoding]::UTF8.GetBytes($Text)
-    $lineLen = 0
-
-    foreach ($b in $bytes) {
-        if ($b -eq 13) { continue }   # skip bare CR
-        if ($b -eq 10) {
-            [void]$sb.Append("`r`n")
-            $lineLen = 0
-            continue
-        }
-        $needsEncode = -not (
-            ($b -ge 33 -and $b -le 126 -and $b -ne 61) -or
-            $b -eq 9 -or $b -eq 32)
-        $encoded = if ($needsEncode) { "={0:X2}" -f $b } else { [char]$b }
-        $addLen  = $encoded.Length
-        if ($lineLen + $addLen -gt 75) {
-            [void]$sb.Append("=`r`n")
-            $lineLen = 0
-        }
-        [void]$sb.Append($encoded)
-        $lineLen += $addLen
-    }
-    return $sb.ToString()
-}
-
 function Build-SmimeMimeContent {
     <#
     .SYNOPSIS
     Build inner MIME content (body + attachments) for signing/encrypting.
     Returns a CRLF-terminated string.
     Attachments: array of @{ Name=; ContentType=; Bytes=[byte[]] }
+
+    The body is base64-encoded rather than quoted-printable. Base64 is
+    treated as opaque binary by mail servers and is therefore not
+    re-encoded in transit, which is critical for S/MIME signature stability.
     #>
     param(
         [string]$BodyText,
@@ -658,24 +673,33 @@ function Build-SmimeMimeContent {
     $crlf = "`r`n"
     $sb   = [System.Text.StringBuilder]::new()
 
-    $qpBody = ConvertTo-QuotedPrintable -Text $BodyText
+    # Encode body as base64 (76-char lines, CRLF terminated).
+    [byte[]]$bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($BodyText)
+    $b64raw   = [Convert]::ToBase64String($bodyBytes)
+    $bodyEncSb = [System.Text.StringBuilder]::new()
+    for ($i = 0; $i -lt $b64raw.Length; $i += 76) {
+        [void]$bodyEncSb.Append(
+            $b64raw.Substring($i, [Math]::Min(76, $b64raw.Length - $i)) + $crlf)
+    }
+    # $bodyEncSb already ends with \r\n; no extra CRLF is appended so that
+    # Build-SmimeMimeContent returns exactly one trailing \r\n for the
+    # RFC 2046 boundary-separator stripping in New-SmimeSignedMime.
 
     if ($Attachments.Count -eq 0) {
         [void]$sb.Append("Content-Type: $BodyContentType; charset=utf-8$crlf")
-        [void]$sb.Append("Content-Transfer-Encoding: quoted-printable$crlf")
+        [void]$sb.Append("Content-Transfer-Encoding: base64$crlf")
         [void]$sb.Append($crlf)
-        [void]$sb.Append($qpBody)
-        [void]$sb.Append($crlf)
+        [void]$sb.Append($bodyEncSb.ToString())
     } else {
         $bnd = "MixedBnd_" + [Guid]::NewGuid().ToString("N")
         [void]$sb.Append("Content-Type: multipart/mixed; boundary=`"$bnd`"$crlf")
         [void]$sb.Append($crlf)
         [void]$sb.Append("--$bnd$crlf")
         [void]$sb.Append("Content-Type: $BodyContentType; charset=utf-8$crlf")
-        [void]$sb.Append("Content-Transfer-Encoding: quoted-printable$crlf")
+        [void]$sb.Append("Content-Transfer-Encoding: base64$crlf")
         [void]$sb.Append($crlf)
-        [void]$sb.Append($qpBody)
-        [void]$sb.Append($crlf)
+        # Body base64 ends with \r\n which serves as boundary separator.
+        [void]$sb.Append($bodyEncSb.ToString())
 
         foreach ($att in $Attachments) {
             $ct = if ($att.ContentType) { $att.ContentType } `
@@ -705,6 +729,18 @@ function New-SmimeSignedMime {
     <#
     .SYNOPSIS
     Wrap MIME content in multipart/signed (detached SHA-256 signature).
+
+    RFC 2046 §5.1.1 CRLF canonicalisation
+    The CRLF immediately before a boundary delimiter is "conceptually
+    attached to the boundary" and is NOT part of the preceding body part.
+    RFC-compliant verifiers (Outlook, iOS Mail, OpenSSL) therefore hash
+    the body content WITHOUT that trailing CRLF. This function strips the
+    trailing CRLF before computing the signature and emits it separately
+    as the boundary separator, ensuring the signed bytes match exactly
+    what every verifier will compute.
+
+    ExcludeRoot: intermediate CA certificates (e.g. DigiCert) are
+    included in the CMS so recipients can build the full chain.
     Returns complete multipart/signed MIME string (CRLF line endings).
     #>
     param(
@@ -716,12 +752,19 @@ function New-SmimeSignedMime {
 
     $crlf = "`r`n"
 
-    $ci     = New-Object System.Security.Cryptography.Pkcs.ContentInfo(
-        , $ContentBytes)
+    # Decode to string; strip trailing CRLF before signing (RFC 2046 rule).
+    $contentStr = [System.Text.Encoding]::UTF8.GetString($ContentBytes)
+    $signStr    = if ($contentStr.EndsWith($crlf)) {
+        $contentStr.Substring(0, $contentStr.Length - 2)
+    } else { $contentStr }
+    [byte[]]$signBytes = [System.Text.Encoding]::UTF8.GetBytes($signStr)
+
+    $ci     = New-Object System.Security.Cryptography.Pkcs.ContentInfo(, $signBytes)
     $signed = New-Object System.Security.Cryptography.Pkcs.SignedCms($ci, $true)
     $signer = New-Object System.Security.Cryptography.Pkcs.CmsSigner($Certificate)
+    # ExcludeRoot: include intermediate CA certs; root is pre-installed.
     $signer.IncludeOption =
-        [System.Security.Cryptography.X509Certificates.X509IncludeOption]::EndCertOnly
+        [System.Security.Cryptography.X509Certificates.X509IncludeOption]::ExcludeRoot
     # SHA-256 digest OID
     $signer.DigestAlgorithm =
         New-Object System.Security.Cryptography.Oid("2.16.840.1.101.3.4.2.1")
@@ -736,8 +779,7 @@ function New-SmimeSignedMime {
             $b64.Substring($i, [Math]::Min(76, $b64.Length - $i)) + $crlf)
     }
 
-    $bnd     = "SmimeSigBnd_" + [Guid]::NewGuid().ToString("N")
-    $content = [System.Text.Encoding]::UTF8.GetString($ContentBytes)
+    $bnd = "SmimeSigBnd_" + [Guid]::NewGuid().ToString("N")
 
     $mime = [System.Text.StringBuilder]::new()
     [void]$mime.Append(
@@ -747,8 +789,8 @@ function New-SmimeSignedMime {
         "boundary=`"$bnd`"$crlf")
     [void]$mime.Append($crlf)
     [void]$mime.Append("--$bnd$crlf")
-    [void]$mime.Append($content)
-    if (-not $content.EndsWith($crlf)) { [void]$mime.Append($crlf) }
+    [void]$mime.Append($signStr)          # signed content WITHOUT trailing CRLF
+    [void]$mime.Append($crlf)             # boundary separator (not part of signed content)
     [void]$mime.Append("--$bnd$crlf")
     [void]$mime.Append(
         "Content-Type: application/pkcs7-signature; name=`"smime.p7s`"$crlf")
@@ -758,7 +800,6 @@ function New-SmimeSignedMime {
     [void]$mime.Append($crlf)
     [void]$mime.Append($sigSb.ToString())
     [void]$mime.Append("--$bnd--$crlf")
-
     return $mime.ToString()
 }
 
@@ -827,9 +868,12 @@ function Protect-MessageSmime {
 
     if (-not $Sign -and -not $Encrypt) { return $true }
 
-    # 1. Sender address
-    $ctx       = Get-MgContext
-    $fromEmail = $ctx.Account
+    # 1. Sender address ($ctx.Account is empty for personal MSA accounts)
+    $fromEmail = Get-CurrentUserEmail
+    if ([string]::IsNullOrWhiteSpace($fromEmail)) {
+        Write-Error-Message "Could not determine sender address. Please reconnect."
+        return $false
+    }
 
     # 2. Fetch draft
     $draft = Get-Message -MessageId $MessageId
@@ -868,9 +912,9 @@ function Protect-MessageSmime {
     # 4. Signing certificate
     $signingCert = $null
     if ($Sign) {
-        $signingCert = Get-DefaultSigningCertificate
+        $signingCert = Get-DefaultSigningCertificate -EmailAddress $fromEmail
         if (-not $signingCert) {
-            Write-Error-Message "No S/MIME signing certificate. Run SMIME for instructions."
+            Write-Error-Message "No S/MIME signing certificate for '$fromEmail'. Run SMIME for instructions."
             return $false
         }
         Write-Info "Signing with: $(Extract-CertCN $signingCert.Subject)"
@@ -926,46 +970,91 @@ function Protect-MessageSmime {
         return $false
     }
 
-    # 7. Wrap in RFC 2822 envelope
-    $crlf     = "`r`n"
-    $fullMime  = "MIME-Version: 1.0$crlf" +
-                 "From: $fromEmail$crlf"  +
-                 "To: $toList$crlf"       +
-                 "Subject: $subject$crlf" +
-                 $protectedMime
+    # 7. Wrap in RFC 2822 envelope (Date: is required by RFC 2822)
+    $crlf    = "`r`n"
+    $dateStr = [System.DateTime]::UtcNow.ToString(
+        "ddd, dd MMM yyyy HH:mm:ss +0000",
+        [System.Globalization.CultureInfo]::InvariantCulture)
+    $fullMime = "MIME-Version: 1.0$crlf"  +
+                "Date: $dateStr$crlf"     +
+                "From: $fromEmail$crlf"   +
+                "To: $toList$crlf"        +
+                "Subject: $subject$crlf"  +
+                $protectedMime
 
-    # 8. Upload
-    Write-Info "Uploading..."
-    if (-not (Upload-MimeDraft -MessageId $MessageId -MimeContent $fullMime)) {
+    # 8. Send: try PUT /$value on the existing draft then /send (preferred;
+    #    works for Microsoft 365 accounts and some personal accounts).
+    #    Fall back to POST /me/sendMail if PUT is not available.
+    Write-Info "Sending..."
+    [byte[]]$mimeBytes = [System.Text.Encoding]::UTF8.GetBytes($fullMime)
+
+    $valueUri = "/v1.0/me/messages/$MessageId/`$value"
+    $usedPut  = $false
+    try {
+        Invoke-MgGraphRequest `
+            -Method      PUT `
+            -Uri         $valueUri `
+            -Body        $mimeBytes `
+            -ContentType "text/plain" `
+            -ErrorAction Stop
+        $usedPut = $true
+    } catch {
+        # PUT /$value is not supported for personal Microsoft accounts (405).
+        # Silently fall back to POST /me/sendMail.
+        if (-not (Send-MimeDirectly -MimeContent $fullMime)) {
+            return $false
+        }
+        # sendMail creates a new sent message; remove the unsent original draft.
+        Remove-Message -MessageId $MessageId | Out-Null
+        Write-Success "S/MIME message sent"
+        return $true
+    }
+
+    # PUT succeeded – now send the updated draft.
+    $sendUri = "/v1.0/me/messages/$MessageId/send"
+    try {
+        Invoke-MgGraphRequest `
+            -Method      POST `
+            -Uri         $sendUri `
+            -ErrorAction Stop
+    } catch {
+        $detail = if ($_.ErrorDetails.Message) { " | $($_.ErrorDetails.Message)" } else { "" }
+        Write-Error-Message "Send failed: $($_.Exception.Message)$detail"
         return $false
     }
-    Write-Success "S/MIME applied"
+
+    Write-Success "S/MIME message sent"
     return $true
 }
 
-function Upload-MimeDraft {
+function Send-MimeDirectly {
     <#
     .SYNOPSIS
-    Upload raw MIME to an existing draft via Graph PUT /messages/{id}/$value.
-    Replaces the entire message content including attachments.
+    Send raw RFC 2822 MIME via POST /me/sendMail.
+    Graph API requires the MIME content to be base64-encoded in the
+    request body (Content-Type: text/plain). Sending raw MIME results
+    in ErrorMimeContentInvalidBase64String (HTTP 400).
     #>
     param(
-        [Parameter(Mandatory)][string]$MessageId,
         [Parameter(Mandatory)][string]$MimeContent
     )
 
-    $uri = "/v1.0/me/messages/$MessageId/`$value"
+    $uri = "/v1.0/me/sendMail"
     try {
-        [byte[]]$bytes = [System.Text.Encoding]::UTF8.GetBytes($MimeContent)
+        # Graph /me/sendMail requires the MIME as a base64-encoded string.
+        [byte[]]$mimeBytes = [System.Text.Encoding]::UTF8.GetBytes($MimeContent)
+        $b64Body           = [Convert]::ToBase64String($mimeBytes)
+
         Invoke-MgGraphRequest `
-            -Method      PUT `
+            -Method      POST `
             -Uri         $uri `
-            -Body        $bytes `
+            -Body        $b64Body `
             -ContentType "text/plain" `
             -ErrorAction Stop
         return $true
     } catch {
-        Write-Error-Message "MIME upload: $($_.Exception.Message)"
+        $detail = if ($_.ErrorDetails.Message) { " | $($_.ErrorDetails.Message)" } else { "" }
+        Write-Error-Message "MIME send: $($_.Exception.Message)$detail"
         return $false
     }
 }
