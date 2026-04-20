@@ -411,7 +411,9 @@ $quotedBody
     }
     
     $toRecipients  = ConvertTo-RecipientArray $parsed.To
-    $footerResult  = Apply-DraftFooter $parsed.Body
+    $footerResult  = Apply-DraftFooterBeforeQuotedSection `
+        -BodyText $parsed.Body `
+        -QuotedSectionHeader $Config.EmailTemplates.OriginalMessageHeader
     
     # Create draft
     $draft = New-DraftMessage `
@@ -532,7 +534,9 @@ $forwardedBody
     }
     
     $toRecipients = ConvertTo-RecipientArray $parsed.To
-    $footerResult = Apply-DraftFooter $parsed.Body
+    $footerResult = Apply-DraftFooterBeforeQuotedSection `
+        -BodyText $parsed.Body `
+        -QuotedSectionHeader $Config.EmailTemplates.ForwardedMessageHeader
     
     # Create draft
     $draft = New-DraftMessage `

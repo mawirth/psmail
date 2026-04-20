@@ -13,10 +13,11 @@ using **Microsoft Graph API**.
 - **Attachments** — upload when composing, save received files
 - **Contact search** — search email history, copy address to clipboard
 - **Filtering** — search by sender, subject, or body across all folders
-- **S/MIME** — verify incoming signatures, sign and encrypt outgoing mail
+- **S/MIME** — verify incoming signatures, decrypt incoming encrypted mail, sign and encrypt outgoing mail
 - **HTML cleanup** — converts HTML emails to readable plain text
 - **Folder management** — Inbox, Drafts, Sent, Deleted, Junk
-- **Text-only, no local sync** — server-side operations via Graph API
+- **Stable viewport filling** — message lists fill exactly one screen without clearing the console
+- **Local metadata only** — no local mailbox sync; only small local state/cache files
 
 ## Requirements
 
@@ -73,9 +74,11 @@ pwsh psmail.ps1 -Version # show version
 4            2026-01-22 09:00  carl@example.com   Normal mail
 ```
 
-`U` = unread · `E` = encrypted · `S` = signing status (✔ trusted / ~ untrusted / ✖ invalid) · `A` = attachment
+`U` = unread · `E` = encrypted · `S` = signing status (✔ trusted / ~ untrusted / ✖ invalid) · `A` = real user attachment
 
-S/MIME status is verified on first open and cached for the session.
+S/MIME status is verified on first open and cached locally. Pure S/MIME structure attachments are filtered out so signed or encrypted mails are not shown as normal attachments.
+
+Encrypted and signed messages can show both markers at once: `E` for encryption and `S` for the inner signature status.
 
 ## Documentation
 
@@ -83,8 +86,9 @@ S/MIME status is verified on first open and cached for the session.
 |----------|----------|
 | [docs/commands.md](docs/commands.md) | Full command reference, bulk ops, filtering, composition, attachments |
 | [docs/smime.md](docs/smime.md) | S/MIME verification, signing, encryption, certificate setup |
-| [docs/configuration.md](docs/configuration.md) | Editor, colors, footer, authentication, pagination |
+| [docs/configuration.md](docs/configuration.md) | Editor, colors, footer, authentication, pagination, local state files |
 | [tools/README.md](tools/README.md) | HTML footer with logo |
+| [NEXTSTEPS.md](NEXTSTEPS.md) | Planned ideas and candidate scope for the next version |
 
 ## File Structure
 
@@ -94,6 +98,7 @@ src/              # modules (config, graph, ui, drafts, smime, …)
 docs/             # detailed documentation
 tools/            # Create-HtmlFooter.ps1
 data/             # footer.txt / footer.html (gitignored)
+                  # smime-drafts.json / smime-cache.json / local helper state
 attachments/      # downloaded attachments (gitignored)
 cert/             # certificate files (gitignored)
 ```
@@ -120,6 +125,15 @@ Disconnect-MgGraph
 - Text-only composition (no inline HTML on send)
 - No POP/IMAP, no background sync
 - S/MIME encryption requires recipient certificate in Windows cert store
+- AI-assisted reply suggestions are not implemented yet
+
+## Current S/MIME Scope
+
+- Incoming signed mail: verified and shown with trusted/untrusted/invalid status
+- Incoming encrypted mail: decrypted locally if a matching private key exists
+- Incoming encrypted + signed mail: both encryption and signature are indicated
+- Outgoing signing/encryption: uses certificates from the Windows certificate store
+- S/MIME state is cached locally for list markers; message bodies are not persisted in the cache
 
 ## License
 

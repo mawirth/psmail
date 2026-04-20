@@ -386,6 +386,42 @@ function Apply-DraftFooter {
     return @{ ContentType = "Text"; Body = $BodyText }
 }
 
+function Apply-DraftFooterBeforeQuotedSection {
+    <#
+    .SYNOPSIS
+    Apply the footer only to the new top section of a reply/forward body and
+    keep the quoted/forwarded original content below it.
+    #>
+    param(
+        [string]$BodyText,
+        [Parameter(Mandatory)][string]$QuotedSectionHeader
+    )
+
+    if ([string]::IsNullOrWhiteSpace($BodyText)) {
+        return Apply-DraftFooter $BodyText
+    }
+
+    $markerIndex = $BodyText.IndexOf($QuotedSectionHeader)
+    if ($markerIndex -lt 0) {
+        return Apply-DraftFooter $BodyText
+    }
+
+    $introBody = $BodyText.Substring(0, $markerIndex).TrimEnd()
+    $quotedBody = $BodyText.Substring($markerIndex).TrimStart()
+
+    $footerResult = Apply-DraftFooter $introBody
+    $combinedBody = if ([string]::IsNullOrWhiteSpace($footerResult.Body)) {
+        $quotedBody
+    } else {
+        $footerResult.Body + "`n`n" + $quotedBody
+    }
+
+    return @{
+        ContentType = $footerResult.ContentType
+        Body        = $combinedBody
+    }
+}
+
 function Invoke-UploadAttachments {
     <#
     .SYNOPSIS
