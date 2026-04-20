@@ -14,15 +14,24 @@ function Get-ColumnWidths {
     if ($consoleWidth -le 0) { $consoleWidth = 80 }
     
     # Column widths (derived from actual column headers and formatting)
-    # Index: "{0,-2} " = 3 chars
+    # Index: dynamic width based on highest loaded list index + trailing space
     # Unread: "* " = 2 chars
     # S/MIME (inbox only): "✔ " = 2 chars
     # Attachment: "*  " = 3 chars
     # Date: "yyyy-MM-dd HH:mm  " = 18 chars
     # From/To: "{0,-18} " = 19 chars
     # Spacing and margins: ~5 chars
-    
-    $indexWidth     = 3
+
+    $maxIndex = 99
+    if ($global:State -and $global:State.Items -and $global:State.Items.Count -gt 0) {
+        $maxItemIndex = ($global:State.Items | Measure-Object -Property Index -Maximum).Maximum
+        if ($null -ne $maxItemIndex) {
+            $maxIndex = [Math]::Max($maxIndex, [int]$maxItemIndex)
+        }
+    }
+
+    $indexDigits    = [Math]::Max(2, ([string]$maxIndex).Length)
+    $indexWidth     = $indexDigits + 1
     $unreadWidth    = 2
     $encryptedWidth = 2   # E column (inbox only)
     $smimeWidth     = 2   # S column (inbox only)
@@ -46,6 +55,7 @@ function Get-ColumnWidths {
     $addressDisplayWidth = 18
     
     return @{
+        Index   = $indexDigits
         Subject = $subjectWidth
         Address = $addressDisplayWidth
     }
@@ -56,14 +66,21 @@ function Render-MessageListHeader {
     .SYNOPSIS
     Render the column header for message list
     #>
-    param([string]$View)
-    
+    param(
+        [string]$View,
+        [hashtable]$ColumnWidths
+    )
+
+    $indexHeader = "#".PadRight($ColumnWidths.Index + 1)
+
     if ($View -eq "inbox") {
-        Write-Host "#  U E S A  Date              From               " `
+        Write-Host "$indexHeader" -NoNewline
+        Write-Host "U E S A  Date              From               " `
             -NoNewline
         Write-Host "Subject" -ForegroundColor $Config.Colors.SubjectHeader
     } else {
-        Write-Host "#  U A  Date              " `
+        Write-Host "$indexHeader" -NoNewline
+        Write-Host "U A  Date              " `
             -NoNewline
         
         if ($View -eq "sentitems" -or $View -eq "drafts") {
@@ -97,7 +114,8 @@ function Render-MessageRow {
     $date = Format-DateTime $Item.DateTime
     
     # Index and unread
-    Write-Host ("{0,-2} " -f $Item.Index) -NoNewline
+    $indexText = ([string]$Item.Index).PadRight($ColumnWidths.Index + 1)
+    Write-Host $indexText -NoNewline
     Write-Host "$unreadIcon " -NoNewline
     
     # E (encrypted) and S (signing) icons - inbox only
@@ -299,7 +317,7 @@ function Show-MessageList {
     $columnWidths = Get-ColumnWidths -View $view
     
     # Header line
-    Render-MessageListHeader -View $view
+    Render-MessageListHeader -View $view -ColumnWidths $columnWidths
 
     $displayItems = @($global:State.Items | Select-Object -First $layout.MessageRows)
     foreach ($item in $displayItems) {

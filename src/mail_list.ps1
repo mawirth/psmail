@@ -194,7 +194,7 @@ function Invoke-ListMore {
     $view = $global:State.View
     $columnWidths = Get-ColumnWidths -View $view
     
-    Render-MessageListHeader -View $view
+    Render-MessageListHeader -View $view -ColumnWidths $columnWidths
     
     # Display only new items
     foreach ($item in $newItems) {

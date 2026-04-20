@@ -67,14 +67,16 @@ pwsh psmail.ps1 -Version # show version
 ## Message List (Inbox)
 
 ```
-#  U E S A  Date              From               Subject
-1  *   ✔ *  2026-01-22 12:30  alice@example.com  Signed mail
-2     E      2026-01-22 11:10  bob@example.com    Encrypted
-3       ~    2026-01-22 10:40  eve@example.com    Untrusted sig
-4            2026-01-22 09:00  carl@example.com   Normal mail
+#    U E S A  Date              From               Subject
+1    *   ✔ *  2026-01-22 12:30  alice@example.com  Signed mail
+27      E      2026-01-22 11:10  bob@example.com    Encrypted
+103        ~    2026-01-22 10:40  eve@example.com    Untrusted sig
+1004         2026-01-22 09:00  carl@example.com   Normal mail
 ```
 
 `U` = unread · `E` = encrypted · `S` = signing status (✔ trusted / ~ untrusted / ✖ invalid) · `A` = real user attachment
+
+The `#` column expands automatically when message indexes become three or four digits so the remaining columns stay aligned.
 
 S/MIME status is verified on first open and cached locally. Pure S/MIME structure attachments are filtered out so signed or encrypted mails are not shown as normal attachments.
 

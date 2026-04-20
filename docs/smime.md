@@ -8,11 +8,13 @@ signing/encryption, using the **Windows Certificate Store** (`certmgr.msc`).
 The inbox list includes two S/MIME indicator columns:
 
 ```
-#  U E S A  Date              From               Subject
-1  *   ✔ *  2026-01-22 12:30  alice@example.com  Signed message
-2     E      2026-01-22 11:10  bob@example.com    Encrypted message
-3       ~    2026-01-22 10:40  eve@example.com    Untrusted signature
+#    U E S A  Date              From               Subject
+1    *   ✔ *  2026-01-22 12:30  alice@example.com  Signed message
+27      E      2026-01-22 11:10  bob@example.com    Encrypted message
+103        ~    2026-01-22 10:40  eve@example.com    Untrusted signature
 ```
+
+The index column expands automatically for three- and four-digit message numbers so `U E S A` and the following columns remain aligned.
 
 | Column | Meaning |
 |--------|---------|
