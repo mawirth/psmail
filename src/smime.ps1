@@ -122,6 +122,193 @@ function ConvertFrom-Base64Mime {
     try { return [Convert]::FromBase64String($clean) } catch { return $null }
 }
 
+function ConvertFrom-QuotedPrintableMime {
+    <#
+    .SYNOPSIS
+    Decode quoted-printable MIME text to raw bytes.
+    Handles soft line breaks and RFC 2045 hex escapes.
+    #>
+    param([string]$Body)
+
+    if ($null -eq $Body) { return $null }
+
+    $normalized = $Body -replace "=\r?\n", ""
+    $bytes = [System.Collections.Generic.List[byte]]::new()
+
+    for ($i = 0; $i -lt $normalized.Length; $i++) {
+        $ch = $normalized[$i]
+        if ($ch -eq '=' -and $i + 2 -lt $normalized.Length) {
+            $hex = $normalized.Substring($i + 1, 2)
+            if ($hex -match '^[0-9A-Fa-f]{2}$') {
+                [void]$bytes.Add([Convert]::ToByte($hex, 16))
+                $i += 2
+                continue
+            }
+        }
+
+        [byte[]]$charBytes = [System.Text.Encoding]::ASCII.GetBytes([string]$ch)
+        foreach ($b in $charBytes) {
+            [void]$bytes.Add($b)
+        }
+    }
+
+    return $bytes.ToArray()
+}
+
+function Get-MimeCharset {
+    <#
+    .SYNOPSIS
+    Extract charset= from a Content-Type header if present.
+    #>
+    param([string]$ContentType)
+
+    if ([string]::IsNullOrWhiteSpace($ContentType)) { return $null }
+    if ($ContentType -match '(?i)charset\s*=\s*"([^"]+)"') { return $matches[1].Trim() }
+    if ($ContentType -match "(?i)charset\s*=\s*'([^']+)'") { return $matches[1].Trim() }
+    if ($ContentType -match '(?i)charset\s*=\s*([^\s;]+)') { return $matches[1].Trim(';"'' ') }
+    return $null
+}
+
+function Get-TextEncodingOrUtf8 {
+    <#
+    .SYNOPSIS
+    Return a .NET text encoding for the given MIME charset, or UTF-8 fallback.
+    #>
+    param([string]$Charset)
+
+    if ([string]::IsNullOrWhiteSpace($Charset)) {
+        return [System.Text.Encoding]::UTF8
+    }
+
+    try {
+        return [System.Text.Encoding]::GetEncoding($Charset.Trim())
+    } catch {
+        return [System.Text.Encoding]::UTF8
+    }
+}
+
+function Get-MultipartPartsRaw {
+    <#
+    .SYNOPSIS
+    Split a multipart body into exact raw part strings without trimming
+    significant trailing whitespace. Only the single line break directly
+    preceding the next boundary is removed.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$MimeBody,
+        [Parameter(Mandatory)][string]$Boundary
+    )
+
+    $escapedBoundary = [regex]::Escape($Boundary)
+    $pattern = "(?m)^(--$escapedBoundary(?:--)?)[^\r\n]*(\r?\n)"
+    $matches = [regex]::Matches($MimeBody, $pattern)
+    if ($matches.Count -lt 2) { return @() }
+
+    $parts = [System.Collections.ArrayList]@()
+    for ($i = 0; $i -lt $matches.Count - 1; $i++) {
+        $current = $matches[$i]
+        $next = $matches[$i + 1]
+        $delimiter = $current.Groups[1].Value
+        if ($delimiter.EndsWith("--")) { break }
+
+        $start = $current.Index + $current.Length
+        $length = $next.Index - $start
+        if ($length -lt 0) { continue }
+
+        $part = $MimeBody.Substring($start, $length)
+        if ($part.EndsWith("`r`n")) {
+            $part = $part.Substring(0, $part.Length - 2)
+        } elseif ($part.EndsWith("`n")) {
+            $part = $part.Substring(0, $part.Length - 1)
+        }
+        [void]$parts.Add($part)
+    }
+
+    return @($parts)
+}
+
+function Test-CertificateMatchesEmail {
+    <#
+    .SYNOPSIS
+    Check whether a certificate belongs to the given RFC822 mailbox address.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate,
+        [Parameter(Mandatory)][string]$EmailAddress
+    )
+
+    $emailLower = $EmailAddress.Trim().ToLower()
+    $subjectAltName = $Certificate.Extensions | Where-Object {
+        $_.Oid.FriendlyName -eq "Subject Alternative Name"
+    }
+    if ($subjectAltName) {
+        $sanText = $subjectAltName.Format($false)
+        if ($sanText -match "(?i)(?:^|[,;\s])(?:RFC822 Name|E-mail|Email)\s*=\s*$([regex]::Escape($emailLower))(?:[,;]|$)") {
+            return $true
+        }
+    }
+
+    if ($Certificate.Subject -match '(?i)(?:^|,\s*)(?:E|EMAIL)=([^,]+)') {
+        if ($matches[1].Trim().ToLower() -eq $emailLower) { return $true }
+    }
+
+    return $false
+}
+
+function Test-CertificateHasEmailProtection {
+    <#
+    .SYNOPSIS
+    Check for emailProtection EKU, allowing unrestricted certificates.
+    #>
+    param([Parameter(Mandatory)][System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate)
+
+    $oid = $Config.SmimeConfig.EmailProtectionOid
+    return ($Certificate.EnhancedKeyUsageList.Count -eq 0 -or
+        ($Certificate.EnhancedKeyUsageList | Where-Object {
+            $_.ObjectId -eq $oid
+        }).Count -gt 0)
+}
+
+function Test-CertificateIsCertificateAuthority {
+    <#
+    .SYNOPSIS
+    Return $true for CA certificates, $false for end-entity certificates.
+    #>
+    param([Parameter(Mandatory)][System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate)
+
+    foreach ($ext in $Certificate.Extensions) {
+        if ($ext -is [System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]) {
+            return $ext.CertificateAuthority
+        }
+    }
+    return $false
+}
+
+function Test-CertificateCanEncryptMail {
+    <#
+    .SYNOPSIS
+    Check whether a certificate is suitable as an S/MIME recipient cert.
+    #>
+    param([Parameter(Mandatory)][System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate)
+
+    if ($Certificate.NotAfter -lt [DateTime]::UtcNow) { return $false }
+    if (Test-CertificateIsCertificateAuthority -Certificate $Certificate) { return $false }
+    if (-not (Test-CertificateHasEmailProtection -Certificate $Certificate)) { return $false }
+
+    $keyUsageExt = $Certificate.Extensions | Where-Object {
+        $_ -is [System.Security.Cryptography.X509Certificates.X509KeyUsageExtension]
+    } | Select-Object -First 1
+
+    if (-not $keyUsageExt) { return $true }
+
+    $flags = [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]
+    $usage = $keyUsageExt.KeyUsages
+    return (($usage -band $flags::KeyEncipherment) -ne 0 -or
+            ($usage -band $flags::DataEncipherment) -ne 0 -or
+            ($usage -band $flags::KeyAgreement) -ne 0)
+}
+
 function Get-MimePartText {
     <#
     .SYNOPSIS
@@ -130,21 +317,32 @@ function Get-MimePartText {
     #>
     param([Parameter(Mandatory)][string]$PartContent)
 
+    $ct   = Get-MimeHeaderValue -MimeContent $PartContent -HeaderName "Content-Type"
+    $enc  = Get-TextEncodingOrUtf8 -Charset (Get-MimeCharset -ContentType $ct)
     $cte  = Get-MimeHeaderValue -MimeContent $PartContent `
         -HeaderName "Content-Transfer-Encoding"
     $body = Get-MimeBodySection -MimeText $PartContent
 
-    if ($cte) {
-        switch ($cte.ToLower().Trim()) {
-            "base64" {
-                $bytes = ConvertFrom-Base64Mime -Body $body.Trim()
-                if ($bytes) {
-                    return [System.Text.Encoding]::UTF8.GetString($bytes)
-                }
+    if (-not $cte) {
+        return $body.TrimEnd([char[]]"`r`n")
+    }
+
+    switch ($cte.ToLower().Trim()) {
+        "base64" {
+            $bytes = ConvertFrom-Base64Mime -Body $body.Trim()
+            if ($bytes) {
+                return $enc.GetString($bytes).TrimEnd([char[]]"`r`n")
+            }
+        }
+        "quoted-printable" {
+            $bytes = ConvertFrom-QuotedPrintableMime -Body $body
+            if ($bytes) {
+                return $enc.GetString($bytes).TrimEnd([char[]]"`r`n")
             }
         }
     }
-    return $body.Trim()
+
+    return $body.TrimEnd([char[]]"`r`n")
 }
 
 function Get-MimeReadableText {
@@ -314,7 +512,7 @@ function Get-SmimePlaintextBody {
             $bnd = Get-MimeBoundary -ContentType $ct
             if (-not $bnd) { return $null }
             $body  = Get-MimeBodySection -MimeText $MimeContent
-            $parts = Split-MimeParts -MimeBody $body -Boundary $bnd
+            $parts = Get-MultipartPartsRaw -MimeBody $body -Boundary $bnd
             if ($parts.Count -lt 1) { return $null }
             return Get-MimeReadableText -MimeContent $parts[0]
         }
@@ -494,7 +692,7 @@ function Invoke-SmimeVerification {
                 return $invalid
             }
             $body  = Get-MimeBodySection -MimeText $MimeContent
-            $parts = Split-MimeParts -MimeBody $body -Boundary $boundary
+            $parts = Get-MultipartPartsRaw -MimeBody $body -Boundary $boundary
             if ($parts.Count -lt 2) {
                 $invalid.Error = "multipart/signed needs >= 2 parts"
                 return $invalid
@@ -756,7 +954,7 @@ function Get-SmimeEncryptionCertificate {
     )
 
     $emailLower = $EmailAddress.ToLower().Trim()
-    foreach ($storeName in @("AddressBook", "My", "Root", "CA")) {
+    foreach ($storeName in @("AddressBook", "My")) {
         try {
             $store = New-Object `
                 System.Security.Cryptography.X509Certificates.X509Store(
@@ -764,19 +962,11 @@ function Get-SmimeEncryptionCertificate {
             $store.Open(
                 [System.Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly)
             foreach ($cert in $store.Certificates) {
-                if ($cert.NotAfter -lt [DateTime]::UtcNow) { continue }
-                # Subject Alternative Name (rfc822Name)
-                $san = $cert.Extensions | Where-Object {
-                    $_.Oid.FriendlyName -eq "Subject Alternative Name" }
-                if ($san -and $san.Format($false).ToLower().Contains($emailLower)) {
-                    $store.Close(); return $cert }
-                # Subject field
-                if ($cert.Subject.ToLower().Contains($emailLower)) {
-                    $store.Close(); return $cert }
-                # Legacy E= / EMAIL= in Subject DN
-                if ($cert.Subject -match '(?i)(?:E|EMAIL)=([^,]+)') {
-                    if ($matches[1].Trim().ToLower() -eq $emailLower) {
-                        $store.Close(); return $cert } }
+                if (-not (Test-CertificateCanEncryptMail -Certificate $cert)) { continue }
+                if (Test-CertificateMatchesEmail -Certificate $cert -EmailAddress $emailLower) {
+                    $store.Close()
+                    return $cert
+                }
             }
             $store.Close()
         } catch { }
@@ -803,17 +993,7 @@ function Get-DefaultSigningCertificate {
         $emailLower = $EmailAddress.ToLower().Trim()
         $matched = $certs | Where-Object {
             $c = $_
-            # Subject Alternative Name (rfc822Name)
-            $san = $c.Extensions | Where-Object {
-                $_.Oid.FriendlyName -eq "Subject Alternative Name" }
-            if ($san -and $san.Format($false).ToLower().Contains($emailLower)) {
-                return $true }
-            # Subject field contains email
-            if ($c.Subject.ToLower().Contains($emailLower)) { return $true }
-            # Legacy E= / EMAIL= field in Subject DN
-            if ($c.Subject -match '(?i)(?:E|EMAIL)=([^,]+)') {
-                if ($matches[1].Trim().ToLower() -eq $emailLower) { return $true } }
-            return $false
+            Test-CertificateMatchesEmail -Certificate $c -EmailAddress $emailLower
         }
         if ($matched) { return @($matched)[0] }
         return $null   # no cert for this address - caller must handle
@@ -1201,6 +1381,12 @@ function Protect-MessageSmime {
     # 4b. Recipient certificates (for encryption)
     [System.Security.Cryptography.X509Certificates.X509Certificate2[]]$recipCerts = @()
     if ($Encrypt) {
+        $senderEncryptionCert = Get-SmimeEncryptionCertificate -EmailAddress $fromEmail
+        if (-not $senderEncryptionCert) {
+            Write-Error-Message "No encryption-capable S/MIME certificate for sender '$fromEmail'."
+            return $false
+        }
+
         $toAddresses = @($toList -split '[,;]' |
             ForEach-Object { $_.Trim() } | Where-Object { $_ })
         foreach ($addr in $toAddresses) {
@@ -1213,8 +1399,13 @@ function Protect-MessageSmime {
             $recipCerts += $rc
             Write-Info "Encryption cert found: $addr"
         }
-        # Include sender cert so they can decrypt sent copies
-        if ($signingCert) { $recipCerts += $signingCert }
+
+        $recipCerts += $senderEncryptionCert
+        $recipCerts = @(
+            $recipCerts | Group-Object Thumbprint | ForEach-Object {
+                $_.Group[0]
+            }
+        )
     }
 
     # 5. Build inner MIME
