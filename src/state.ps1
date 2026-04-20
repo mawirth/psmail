@@ -1,6 +1,14 @@
 # state.ps1
 # Global state management
 
+function Test-PersistableSmimeStatus {
+    param([string]$Status)
+
+    return ($Status -eq $Config.SmimeStatus.SignedTrusted -or
+            $Status -eq $Config.SmimeStatus.SignedUntrusted -or
+            $Status -eq $Config.SmimeStatus.SignedInvalid)
+}
+
 function Initialize-State {
     # Load persisted S/MIME draft flags (survives session restarts)
     $smimeDrafts = @{}
@@ -9,6 +17,33 @@ function Initialize-State {
             $json   = Get-Content $Config.SmimeDraftsPath -Raw -ErrorAction Stop
             $loaded = $json | ConvertFrom-Json -AsHashtable -ErrorAction Stop
             if ($loaded) { $smimeDrafts = $loaded }
+        } catch { }
+    }
+
+    # Load persisted S/MIME status cache so E/S list indicators survive restarts
+    $smimeCache = @{}
+    $smimeCacheNeedsCleanup = $false
+    if (Test-Path $Config.SmimeCachePath) {
+        try {
+            $json   = Get-Content $Config.SmimeCachePath -Raw -ErrorAction Stop
+            $loaded = $json | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+            if ($loaded) {
+                foreach ($id in $loaded.Keys) {
+                    $e = $loaded[$id]
+                    if (-not (Test-PersistableSmimeStatus $e.Status)) {
+                        $smimeCacheNeedsCleanup = $true
+                        continue
+                    }
+                    $smimeCache[$id] = @{
+                        Status     = $e.Status
+                        Subject    = $e.Subject    ?? ""
+                        Issuer     = $e.Issuer     ?? ""
+                        ValidUntil = $e.ValidUntil ?? ""
+                        Error      = $e.Error      ?? ""
+                        Body       = $null
+                    }
+                }
+            }
         } catch { }
     }
 
@@ -23,9 +58,39 @@ function Initialize-State {
         # S/MIME: per-draft flags, keyed by message ID.
         # Persisted to SmimeDraftsPath so flags survive session restarts.
         SmimeDrafts    = $smimeDrafts
-        # S/MIME: verification result cache for opened messages
-        SmimeCache     = @{}
+        # S/MIME: verification result cache - persisted to SmimeCachePath.
+        SmimeCache     = $smimeCache
     }
+
+    if ($smimeCacheNeedsCleanup) {
+        Save-SmimeCache
+    }
+}
+
+function Save-SmimeCache {
+    <#
+    .SYNOPSIS
+    Persist the in-memory SmimeCache (Status/cert info per message ID).
+    Body is excluded to keep the file small.
+    #>
+    try {
+        $toSave = @{}
+        foreach ($id in $global:State.SmimeCache.Keys) {
+            $e = $global:State.SmimeCache[$id]
+            if (-not (Test-PersistableSmimeStatus $e.Status)) {
+                continue
+            }
+            $toSave[$id] = @{
+                Status     = $e.Status
+                Subject    = if ($e.Subject)    { $e.Subject    } else { "" }
+                Issuer     = if ($e.Issuer)     { $e.Issuer     } else { "" }
+                ValidUntil = if ($e.ValidUntil) { $e.ValidUntil } else { "" }
+                Error      = if ($e.Error)      { $e.Error      } else { "" }
+            }
+        }
+        $toSave | ConvertTo-Json -Depth 3 |
+            Set-Content $Config.SmimeCachePath -Encoding UTF8 -ErrorAction Stop
+    } catch { }
 }
 
 function Reset-StateItems {

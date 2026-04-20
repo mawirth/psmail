@@ -32,9 +32,18 @@ function ConvertTo-MessageItem {
     }
     
     # S/MIME status is verified lazily when a message is opened
-    # (avoids N+1 API calls during inbox listing)
+    # (avoids N+1 API calls during inbox listing).
+    # Restore a previously cached result so the E/S list indicator
+    # persists across list refreshes within the same session.
     $item.SmimeStatus = $Config.SmimeStatus.None
-    
+    if ($global:State.SmimeCache -and
+        $global:State.SmimeCache.ContainsKey($Message.id)) {
+        $cachedStatus = $global:State.SmimeCache[$Message.id].Status
+        if ($cachedStatus -ne $Config.SmimeStatus.Encrypted) {
+            $item.SmimeStatus = $cachedStatus
+        }
+    }
+
     return $item
 }
 

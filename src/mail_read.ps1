@@ -52,6 +52,16 @@ function Invoke-OpenMessage {
     Write-Host "Date:    " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
     Write-Host (Format-DateTime $receivedDate)
     
+    # Pre-fetch attachments (needed for S/MIME fallback detection below)
+    $fileAttachments = @()
+    if ($msg.hasAttachments) {
+        $fileAttachments = @(
+            (Get-MessageAttachments -MessageId $item.Id) | Where-Object {
+                $_.'@odata.type' -eq '#microsoft.graph.fileAttachment'
+            }
+        )
+    }
+
     # S/MIME verification (inbox only; result is cached per session)
     $smimeResult = $null
     if ($global:State.View -eq "inbox" -and $Config.SmimeConfig.AutoVerify) {
@@ -63,34 +73,70 @@ function Invoke-OpenMessage {
                 -ForegroundColor $Config.Colors.Info
             $smimeResult = Get-MessageSmimeStatus -MessageId $item.Id
             $global:State.SmimeCache[$item.Id] = $smimeResult
+            Save-SmimeCache
         }
         $item.SmimeStatus = $smimeResult.Status
+
+        # Fallback/reconciliation when raw MIME is inaccessible or an old cache
+        # entry classified an opaque-signed smime.p7m as encrypted.
+        if ($fileAttachments.Count -gt 0) {
+            $structuralAttachment = @(
+                $fileAttachments | Where-Object {
+                    $_.name -ieq 'smime.p7s' -or $_.name -ieq 'smime.p7m'
+                }
+            ) | Select-Object -First 1
+
+            if ($structuralAttachment) {
+                $attachmentType = Get-SmimeTypeFromAttachment `
+                    -Attachment $structuralAttachment -MessageId $item.Id
+
+                if ($attachmentType -eq "MultipleSigned" -or
+                    $attachmentType -eq "OpaqueSign") {
+                    if ($item.SmimeStatus -eq $Config.SmimeStatus.None -or
+                        $item.SmimeStatus -eq $Config.SmimeStatus.Encrypted) {
+                        $item.SmimeStatus = $Config.SmimeStatus.SignedUntrusted
+                        $smimeResult = @{
+                            Status     = $Config.SmimeStatus.SignedUntrusted
+                            Subject    = ""; Issuer = ""; ValidUntil = ""
+                            Error      = "Signature detected but could not be verified"
+                            Body       = $null
+                        }
+                        $global:State.SmimeCache[$item.Id] = $smimeResult
+                        Save-SmimeCache
+                    }
+                } elseif ($attachmentType -eq "Encrypted" -and
+                          $item.SmimeStatus -eq $Config.SmimeStatus.None) {
+                    $item.SmimeStatus = $Config.SmimeStatus.Encrypted
+                    $smimeResult = @{
+                        Status = $Config.SmimeStatus.Encrypted
+                        Subject = ""; Issuer = ""; ValidUntil = ""; Error = ""; Body = $null
+                    }
+                    $global:State.SmimeCache[$item.Id] = $smimeResult
+                    Save-SmimeCache
+                }
+            }
+        }
     }
-    
+
     if ($item.SmimeStatus -ne $Config.SmimeStatus.None) {
         Show-SmimeInfo `
             -MessageId $item.Id `
             -Status    $item.SmimeStatus `
             -Details   $smimeResult
     }
-    
-    # Attachments
-    if ($msg.hasAttachments) {
+
+    # Attachments — use the already-fetched list; filter out S/MIME structural files
+    $userAttachments = @($fileAttachments | Where-Object {
+        $_.name -ine 'smime.p7s' -and $_.name -ine 'smime.p7m'
+    })
+    if ($userAttachments.Count -gt 0) {
         Write-Host ""
         Write-Host "Attachments: " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
-        $fileAttachments = @(
-            (Get-MessageAttachments -MessageId $item.Id) | Where-Object {
-                $_.'@odata.type' -eq '#microsoft.graph.fileAttachment'
-            }
-        )
-        
-        if ($fileAttachments) {
-            Write-Host "$($fileAttachments.Count) file(s)"
-            Write-Host "[SAVE #] Save attachment" `
-                -ForegroundColor $Config.Colors.MenuAction
-            Write-Host "[SAVEALL] Save all attachments" `
-                -ForegroundColor $Config.Colors.MenuAction
-        }
+        Write-Host "$($userAttachments.Count) file(s)"
+        Write-Host "[SAVE #] Save attachment" `
+            -ForegroundColor $Config.Colors.MenuAction
+        Write-Host "[SAVEALL] Save all attachments" `
+            -ForegroundColor $Config.Colors.MenuAction
     }
     
     Write-Host ("=" * 70) -ForegroundColor $Config.Colors.Header
@@ -110,6 +156,36 @@ function Invoke-OpenMessage {
             $safeUrl = $slMatch.Value
             $unwrapped = Unwrap-SafeLink $safeUrl
             $body = $body.Replace($safeUrl, $unwrapped)
+        }
+    }
+
+    # For S/MIME messages, body.content is often empty (text is embedded in
+    # the MIME structure). Fallback chain:
+    #   1. $smimeResult.Body  - from live verification (not persisted in cache)
+    #   2. Lazy extraction    - fetch raw MIME and decrypt/extract if Body is null
+    #      (handles the case where result came from persistent cache with Body=null)
+    #   3. bodyPreview        - Graph text snippet (~255 chars)
+    if ([string]::IsNullOrWhiteSpace($body)) {
+        if ($smimeResult -and $smimeResult.Body) {
+            $body = $smimeResult.Body
+        } elseif ($smimeResult -and
+                  $smimeResult.Status -ne $Config.SmimeStatus.None) {
+            # Body not cached — try live extraction via raw MIME
+            $rawMime = Get-MessageMime -MessageId $item.Id
+            if ($rawMime) {
+                $mimeType = Get-SmimeMimeType -MimeContent $rawMime
+                if ($mimeType -ne "None") {
+                    $body = Get-SmimePlaintextBody `
+                        -MimeContent $rawMime -SmimeType $mimeType
+                    if ($body) { $smimeResult['Body'] = $body }  # session cache
+                }
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace($body) -and
+            -not [string]::IsNullOrWhiteSpace($msg.bodyPreview)) {
+            $body = $msg.bodyPreview
+            Write-Host "(S/MIME: showing text preview — full body not extractable)" `
+                -ForegroundColor $Config.Colors.Info
         }
     }
     
