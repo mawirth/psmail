@@ -127,21 +127,13 @@ function Invoke-ListMessages {
         return
     }
     
-    if (-not $result.Messages -or $result.Messages.Count -eq 0) {
-        Show-CurrentView
-        if ($filterText) {
-            Write-Host "No messages match filter '$filterText'." -ForegroundColor $Config.Colors.Warning
-        } else {
-            Write-Host "No messages." -ForegroundColor $Config.Colors.NoMessages
-        }
-        return
-    }
-    
     # Store next link for pagination
     $global:State.NextLink = $result.NextLink
     
     # Add messages to state
-    Add-MessagesToState -Messages $result.Messages | Out-Null
+    if ($result.Messages -and $result.Messages.Count -gt 0) {
+        Add-MessagesToState -Messages $result.Messages | Out-Null
+    }
     
     # Display list
     Show-CurrentView

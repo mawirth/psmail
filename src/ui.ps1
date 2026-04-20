@@ -133,6 +133,46 @@ function Render-MessageRow {
     Write-Host $subject
 }
 
+function Get-ListLayoutInfo {
+    <#
+    .SYNOPSIS
+    Return the exact line budget for the list viewport.
+    #>
+
+    $consoleHeight = $Host.UI.RawUI.WindowSize.Height
+    if ($consoleHeight -le 0) { $consoleHeight = 30 }
+
+    $filterLines = if (Get-Filter) { 2 } else { 0 }
+
+    $headerLines = 3      # Write-Header: blank + title + separator
+    $listHeaderLines = 1  # "# U ..." header
+    $paginationLines = 1  # fixed slot, with or without [M] message
+    $menuLines = 7        # Show-Menu output
+    $promptLines = 1      # Read-Command prompt
+
+    $reservedLines = $headerLines + $filterLines + $listHeaderLines +
+        $paginationLines + $menuLines + $promptLines
+    $messageRows = $consoleHeight - $reservedLines
+    if ($messageRows -lt $Config.MinPageSize) {
+        $messageRows = $Config.MinPageSize
+    }
+    $messageRows = [Math]::Min($Config.MaxPageSize, $messageRows)
+
+    return @{
+        ConsoleHeight = $consoleHeight
+        FilterLines   = $filterLines
+        MessageRows   = $messageRows
+    }
+}
+
+function Write-BlankListRows {
+    param([int]$Count)
+
+    for ($i = 0; $i -lt $Count; $i++) {
+        Write-Host ""
+    }
+}
+
 function Get-OptimalPageSize {
     <#
     .SYNOPSIS
@@ -143,48 +183,7 @@ function Get-OptimalPageSize {
     all UI overhead (header, menu, pagination) from total console height.
     #>
     
-    # Get console height
-    $consoleHeight = $Host.UI.RawUI.WindowSize.Height
-    if ($consoleHeight -le 0) { $consoleHeight = 30 }
-    
-    # Count reserved lines (all non-message UI elements):
-    # 
-    # Header section:
-    #   - 1 blank line at top
-    #   - 1 folder title line (e.g., "Inbox")
-    #   - 1 separator line (dashes)
-    #   - 1 column header line ("#  U S A  Date...")
-    # = 4 lines
-    # 
-    # Optional filter indicator (if active):
-    #   - 1 line "[Filter active: '...']" 
-    #   - 1 blank line
-    # = 2 lines
-    # 
-    # Footer/Menu section:
-    #   - 1 blank line before menu (ONLY if there are messages)
-    #   - 1 line "[M] More messages available" (ONLY if NextLink exists)
-    #   - 1 blank line before separator
-    #   - 1 separator line (dashes)
-    #   - 1 view-specific menu line (e.g., "[L] List [R #] Read...")
-    #   - 3 global menu lines (folders, filter/contacts, logout)
-    #   - 1 blank line after menu
-    #   - 1 prompt line ("> ")
-    # = 9 lines (worst case with pagination)
-    # 
-    # Total: 4 + 2 (filter, worst case) + 9 (footer) = 15 lines
-    # Add 2 lines buffer for safety
-    
-    $reservedLines = 17
-    
-    # Calculate available lines for messages
-    $availableLines = $consoleHeight - $reservedLines
-    
-    # Ensure minimum and maximum bounds
-    $pageSize = [Math]::Max($Config.MinPageSize, $availableLines)
-    $pageSize = [Math]::Min($Config.MaxPageSize, $pageSize)
-    
-    return $pageSize
+    return (Get-ListLayoutInfo).MessageRows
 }
 
 function Show-Menu {
@@ -286,34 +285,44 @@ function Show-MessageList {
     Display message list with formatting
     #>
     
+    $layout = Get-ListLayoutInfo
+
     # Show active filter if present
     $filterText = Get-Filter
     if ($filterText) {
         Write-Host "[Filter active: '$filterText']" -ForegroundColor $Config.Colors.FilterActive
         Write-Host ""
     }
-    
-    if ($global:State.Items.Count -eq 0) {
-        Write-Host "No messages." -ForegroundColor $Config.Colors.NoMessages
-        return
-    }
-    
+
     $view = $global:State.View
     $columnWidths = Get-ColumnWidths -View $view
     
     # Header line
     Render-MessageListHeader -View $view
-    
-    # Message rows
-    foreach ($item in $global:State.Items) {
+
+    $displayItems = @($global:State.Items | Select-Object -First $layout.MessageRows)
+    foreach ($item in $displayItems) {
         Render-MessageRow -Item $item -View $view -ColumnWidths $columnWidths
     }
-    
-    # Pagination info
+
+    if ($displayItems.Count -eq 0) {
+        $emptyMessage = if ($filterText) {
+            "No messages match filter '$filterText'."
+        } else {
+            "No messages."
+        }
+        Write-Host $emptyMessage -ForegroundColor $Config.Colors.NoMessages
+        Write-BlankListRows -Count ($layout.MessageRows - 1)
+    } elseif ($displayItems.Count -lt $layout.MessageRows) {
+        Write-BlankListRows -Count ($layout.MessageRows - $displayItems.Count)
+    }
+
+    # Fixed pagination/status slot to keep the layout height stable
     if ($global:State.NextLink) {
-        Write-Host ""
         Write-Host "[M] More messages available" `
             -ForegroundColor $Config.Colors.Info
+    } else {
+        Write-Host ""
     }
 }
 
