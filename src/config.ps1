@@ -58,6 +58,11 @@ $script:Config = @{
     # HTML comments are stripped server-side).
     SmimeDraftsPath = Join-Path $PSScriptRoot "..\data\smime-drafts.json"
 
+    # Persisted S/MIME verification status cache - survives session restarts
+    # so the E/S list column indicators reappear without reopening each message.
+    # Stores Status/Subject/Issuer/ValidUntil per message ID (not Body).
+    SmimeCachePath  = Join-Path $PSScriptRoot "..\data\smime-cache.json"
+
     # HTML body formatting (when sending HTML emails)
     HtmlBodyStyle = @{
         FontFamily = "Arial"
