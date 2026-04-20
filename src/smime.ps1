@@ -253,6 +253,11 @@ function Test-CertificateMatchesEmail {
         if ($matches[1].Trim().ToLower() -eq $emailLower) { return $true }
     }
 
+    if ($Certificate.Subject -match '(?i)(?:^|,\s*)CN=([^,]+)') {
+        $cnValue = $matches[1].Trim().ToLower()
+        if ($cnValue -eq $emailLower) { return $true }
+    }
+
     return $false
 }
 
@@ -437,14 +442,26 @@ function Get-SmimeTypeFromAttachment {
         $name = "$($Attachment.name)"
     }
     $nameLower = $name.ToLower()
-
-    if ($nameLower -eq 'smime.p7s') { return "MultipleSigned" }
-    if ($nameLower -ne 'smime.p7m') { return "None" }
+    $extLower = [System.IO.Path]::GetExtension($nameLower)
 
     $contentType = ""
     if ($Attachment.PSObject.Properties.Name -contains 'contentType' -and
         $Attachment.contentType) {
         $contentType = "$($Attachment.contentType)".ToLower()
+    }
+
+    if ($nameLower -eq 'smime.p7s' -or
+        $extLower -eq '.p7s' -or
+        $contentType -match '^multipart/signed\b' -or
+        $contentType -match '^application/(x-)?pkcs7-signature\b') {
+        return "MultipleSigned"
+    }
+
+    if ($nameLower -eq 'smime.p7m' -or $extLower -eq '.p7m') {
+        # continue below
+    } elseif (
+        $contentType -notmatch '^application/(x-)?pkcs7-mime\b') {
+        # still continue to byte inspection below for generic application/octet-stream
     }
 
     if ($contentType -match 'smime-type\s*=\s*enveloped-data') {
@@ -474,21 +491,414 @@ function Get-SmimeTypeFromAttachment {
         try {
             [byte[]]$contentBytes = [Convert]::FromBase64String($contentBytesB64)
             try {
+                $rawText = [System.Text.Encoding]::ASCII.GetString($contentBytes)
+                $looksLikeMime = (
+                    $rawText -match '^(?im)(content-type|mime-version|content-transfer-encoding):'
+                )
+                if ($looksLikeMime) {
+                    $embeddedType = Get-SmimeMimeType -MimeContent $rawText
+                    if ($embeddedType -ne "None") { return $embeddedType }
+                }
+            } catch { }
+            try {
                 $env = New-Object System.Security.Cryptography.Pkcs.EnvelopedCms
-                $env.Decode([byte[]]$contentBytes)
+                [byte[]]$normalizedEncBytes = ConvertTo-NormalizedCmsBytes `
+                    -Bytes $contentBytes -Kind Encrypted
+                $env.Decode([byte[]]$normalizedEncBytes)
                 return "Encrypted"
             } catch { }
             try {
                 $signed = New-Object System.Security.Cryptography.Pkcs.SignedCms
-                $signed.Decode([byte[]]$contentBytes)
+                [byte[]]$normalizedSigBytes = ConvertTo-NormalizedCmsBytes `
+                    -Bytes $contentBytes -Kind Signed
+                $signed.Decode([byte[]]$normalizedSigBytes)
                 return "OpaqueSign"
             } catch { }
         } catch { }
     }
 
-    # smime.p7m is ambiguous; prefer signed to avoid falsely labelling
-    # readable signed mail as encrypted-only.
+    if ($contentType -match '^application/(x-)?pkcs7-mime\b') {
+        # Generic p7m containers are ambiguous, but signed-data can usually be
+        # identified by headers or successful SignedCms parsing above. Bias the
+        # undecidable fallback toward encrypted to avoid false signature labels
+        # for decryptable encrypted-only mail.
+        return "Encrypted"
+    }
+
     return "OpaqueSign"
+}
+
+function Test-IsSmimeStructuralAttachment {
+    <#
+    .SYNOPSIS
+    Return $true when an attachment is part of the S/MIME wrapper rather than
+    a user-visible attachment.
+    #>
+    param(
+        [Parameter(Mandatory)]$Attachment,
+        [string]$MessageId = $null
+    )
+
+    $type = Get-SmimeTypeFromAttachment -Attachment $Attachment -MessageId $MessageId
+    return ($type -ne "None")
+}
+
+function Test-IsExplicitSignatureAttachment {
+    <#
+    .SYNOPSIS
+    Return $true only for attachments that explicitly advertise signature
+    semantics, not just a generic PKCS#7 MIME container.
+    #>
+    param([Parameter(Mandatory)]$Attachment)
+
+    $name = ""
+    if ($Attachment.PSObject.Properties.Name -contains 'name') {
+        $name = "$($Attachment.name)"
+    }
+    $nameLower = $name.ToLower()
+    $extLower = [System.IO.Path]::GetExtension($nameLower)
+
+    $contentType = ""
+    if ($Attachment.PSObject.Properties.Name -contains 'contentType' -and
+        $Attachment.contentType) {
+        $contentType = "$($Attachment.contentType)".ToLower()
+    }
+
+    return (
+        $nameLower -eq 'smime.p7s' -or
+        $extLower -eq '.p7s' -or
+        $contentType -match '^multipart/signed\b' -or
+        $contentType -match '^application/(x-)?pkcs7-signature\b' -or
+        $contentType -match 'smime-type\s*=\s*"?(signed-data)"?'
+    )
+}
+
+function ConvertTo-NormalizedCmsBytes {
+    <#
+    .SYNOPSIS
+    Normalize PKCS#7/CMS bytes from Graph attachments.
+    Some payloads arrive as ASCII base64 text instead of raw DER.
+    #>
+    param(
+        [Parameter(Mandatory)][byte[]]$Bytes,
+        [ValidateSet("Signed", "Encrypted")]
+        [string]$Kind = "Signed"
+    )
+
+    $testDecode = if ($Kind -eq "Encrypted") {
+        {
+            param([byte[]]$Data)
+            $cms = New-Object System.Security.Cryptography.Pkcs.EnvelopedCms
+            $cms.Decode([byte[]]$Data)
+        }
+    } else {
+        {
+            param([byte[]]$Data)
+            $cms = New-Object System.Security.Cryptography.Pkcs.SignedCms
+            $cms.Decode([byte[]]$Data)
+        }
+    }
+
+    try {
+        & $testDecode $Bytes
+        return $Bytes
+    } catch { }
+
+    try {
+        $text = [System.Text.Encoding]::ASCII.GetString($Bytes)
+        if ($text -match '(?im)^content-type:' -or
+            $text -match '(?im)^content-transfer-encoding:') {
+            $cte = Get-MimeHeaderValue -MimeContent $text `
+                -HeaderName "Content-Transfer-Encoding"
+            $body = Get-MimeBodySection -MimeText $text
+
+            $decodedFromMime = $null
+            switch (($cte ?? "").ToLower().Trim()) {
+                "base64" {
+                    $decodedFromMime = ConvertFrom-Base64Mime -Body $body
+                }
+                "quoted-printable" {
+                    $decodedFromMime = ConvertFrom-QuotedPrintableMime -Body $body
+                }
+                default {
+                    $decodedFromMime = ConvertFrom-Base64Mime -Body $body
+                }
+            }
+
+            if ($decodedFromMime) {
+                & $testDecode $decodedFromMime
+                return $decodedFromMime
+            }
+        }
+    } catch { }
+
+    try {
+        $ascii = [System.Text.Encoding]::ASCII.GetString($Bytes)
+        $decoded = ConvertFrom-Base64Mime -Body $ascii
+        if ($decoded) {
+            & $testDecode $decoded
+            return $decoded
+        }
+    } catch { }
+
+    return $Bytes
+}
+
+function Get-ByteHexPreview {
+    <#
+    .SYNOPSIS
+    Return a short uppercase hex preview for debug logging.
+    #>
+    param(
+        [byte[]]$Bytes,
+        [int]$Count = 48
+    )
+
+    if (-not $Bytes -or $Bytes.Length -eq 0) { return "" }
+    return (($Bytes | Select-Object -First $Count) |
+        ForEach-Object { $_.ToString('X2') }) -join ' '
+}
+
+function Get-ByteAsciiPreview {
+    <#
+    .SYNOPSIS
+    Return a short ASCII preview for debug logging.
+    #>
+    param(
+        [byte[]]$Bytes,
+        [int]$Count = 320
+    )
+
+    if (-not $Bytes -or $Bytes.Length -eq 0) { return "" }
+    $slice = $Bytes | Select-Object -First $Count
+    $text = [System.Text.Encoding]::ASCII.GetString([byte[]]$slice)
+    return ($text -replace "`r", "<CR>" -replace "`n", "<LF>")
+}
+
+function Write-SmimeDebugDump {
+    <#
+    .SYNOPSIS
+    Append a local debug dump for problematic S/MIME messages.
+    #>
+    param(
+        [string]$MessageId,
+        [string]$AttachmentName,
+        [string]$AttachmentContentType,
+        [string]$AttachmentType,
+        [string]$BodyContentType,
+        [string]$BodyPreview,
+        [byte[]]$RawBytes,
+        [byte[]]$NormalizedBytes,
+        [string]$Error
+    )
+
+    try {
+        $debugPath = Join-Path $PSScriptRoot "..\data\smime-debug.txt"
+        $timestamp = [DateTime]::Now.ToString("yyyy-MM-dd HH:mm:ss")
+        $rawLen = if ($RawBytes) { $RawBytes.Length } else { 0 }
+        $normLen = if ($NormalizedBytes) { $NormalizedBytes.Length } else { 0 }
+
+        $lines = @(
+            "===== S/MIME Debug $timestamp =====",
+            "MessageId: $MessageId",
+            "AttachmentName: $AttachmentName",
+            "AttachmentContentType: $AttachmentContentType",
+            "DetectedAttachmentType: $AttachmentType",
+            "BodyContentType: $BodyContentType",
+            "Error: $Error",
+            "RawLength: $rawLen",
+            "RawHex: $(Get-ByteHexPreview -Bytes $RawBytes)",
+            "RawAscii: $(Get-ByteAsciiPreview -Bytes $RawBytes)",
+            "NormalizedLength: $normLen",
+            "NormalizedHex: $(Get-ByteHexPreview -Bytes $NormalizedBytes)",
+            "NormalizedAscii: $(Get-ByteAsciiPreview -Bytes $NormalizedBytes)",
+            "BodyPreview: $BodyPreview",
+            ""
+        )
+        Add-Content -Path $debugPath -Value $lines -Encoding UTF8
+    } catch { }
+}
+
+function Get-SmimeStatusFromAttachmentFallback {
+    <#
+    .SYNOPSIS
+    Best-effort S/MIME verification when Graph has already unpacked the message
+    into body + PKCS#7 attachment and raw MIME is unavailable.
+    Currently supports detached signatures for simple messages without
+    user-visible attachments.
+    #>
+    param(
+        [Parameter(Mandatory)]$Message,
+        [Parameter(Mandatory)]$Attachment,
+        [Parameter(Mandatory)][string]$MessageId,
+        [array]$UserAttachments = @()
+    )
+
+    $none = @{
+        Status = $Config.SmimeStatus.None
+        IsEncrypted = $false
+        Subject = ""; Issuer = ""; ValidUntil = ""; Error = ""; Body = $null
+    }
+
+    $attachmentType = Get-SmimeTypeFromAttachment -Attachment $Attachment -MessageId $MessageId
+    if ($attachmentType -ne "MultipleSigned" -and
+        $attachmentType -ne "OpaqueSign" -and
+        $attachmentType -ne "Encrypted") {
+        return $none
+    }
+
+    $fullAttachment = $Attachment
+    if ((-not $Attachment.PSObject.Properties.Name.Contains('contentBytes')) -or
+        -not $Attachment.contentBytes) {
+        $fullAttachment = Get-Attachment -MessageId $MessageId -AttachmentId $Attachment.id
+    }
+    if (-not $fullAttachment -or -not $fullAttachment.contentBytes) {
+        return $none
+    }
+
+    try {
+        [byte[]]$sigBytes = [Convert]::FromBase64String($fullAttachment.contentBytes)
+        [byte[]]$normalizedSigBytes = $sigBytes
+        $rawText = [System.Text.Encoding]::ASCII.GetString($sigBytes)
+        $embeddedMimeType = Get-SmimeMimeType -MimeContent $rawText
+
+        if ($embeddedMimeType -ne "None") {
+            $result = Get-SmimeStatusFromMimeContent -MimeContent $rawText
+            if (-not $result.Body -and $Message.body.content) {
+                $result['Body'] = if ($Message.body.contentType -eq "HTML") {
+                    Convert-HtmlToText $Message.body.content
+                } else {
+                    $Message.body.content
+                }
+            }
+            return $result
+        }
+
+        if ($attachmentType -eq "Encrypted") {
+            $normalizedSigBytes = ConvertTo-NormalizedCmsBytes -Bytes $sigBytes -Kind Encrypted
+            $env = New-Object System.Security.Cryptography.Pkcs.EnvelopedCms
+            $env.Decode([byte[]]$normalizedSigBytes)
+            $env.Decrypt()
+            $innerMime = [System.Text.Encoding]::UTF8.GetString($env.ContentInfo.Content)
+            $result = Get-SmimeStatusFromMimeContent -MimeContent $innerMime
+            if ($result.Status -eq $Config.SmimeStatus.None) {
+                $result = @{
+                    Status = $Config.SmimeStatus.Encrypted
+                    IsEncrypted = $true
+                    Subject = ""; Issuer = ""; ValidUntil = ""
+                    Error = ""; Body = Get-MimeReadableText -MimeContent $innerMime
+                }
+            }
+            $result['IsEncrypted'] = $true
+            return $result
+        }
+
+        if ($attachmentType -eq "OpaqueSign") {
+            $normalizedSigBytes = ConvertTo-NormalizedCmsBytes -Bytes $sigBytes -Kind Signed
+            $result = Invoke-CmsVerify -SignatureBytes $normalizedSigBytes -IsDetached $false
+            $result['Body'] = if ($Message.body.content) { $Message.body.content } else { $null }
+            if ($result.Status -eq $Config.SmimeStatus.SignedInvalid -and
+                $result.Error -match 'Invalid cryptographic message type') {
+                try {
+                    $normalizedEncBytes = ConvertTo-NormalizedCmsBytes -Bytes $sigBytes -Kind Encrypted
+                    $env = New-Object System.Security.Cryptography.Pkcs.EnvelopedCms
+                    $env.Decode([byte[]]$normalizedEncBytes)
+                    $env.Decrypt()
+                    $innerMime = [System.Text.Encoding]::UTF8.GetString($env.ContentInfo.Content)
+                    $encResult = Get-SmimeStatusFromMimeContent -MimeContent $innerMime
+                    if ($encResult.Status -eq $Config.SmimeStatus.None) {
+                        $encResult = @{
+                            Status = $Config.SmimeStatus.Encrypted
+                            IsEncrypted = $true
+                            Subject = ""; Issuer = ""; ValidUntil = ""
+                            Error = ""; Body = Get-MimeReadableText -MimeContent $innerMime
+                        }
+                    }
+                    $encResult['IsEncrypted'] = $true
+                    return $encResult
+                } catch { }
+            }
+            if ($result.Status -eq $Config.SmimeStatus.SignedInvalid) {
+                $bodyPreview = if ($Message.body.content) {
+                    $Message.body.content.Substring(0, [Math]::Min(300, $Message.body.content.Length)).
+                        Replace("`r", "<CR>").Replace("`n", "<LF>")
+                } else { "" }
+                Write-SmimeDebugDump `
+                    -MessageId $MessageId `
+                    -AttachmentName $fullAttachment.name `
+                    -AttachmentContentType $fullAttachment.contentType `
+                    -AttachmentType $attachmentType `
+                    -BodyContentType $Message.body.contentType `
+                    -BodyPreview $bodyPreview `
+                    -RawBytes $sigBytes `
+                    -NormalizedBytes $normalizedSigBytes `
+                    -Error $result.Error
+            }
+            return $result
+        }
+
+        if ($UserAttachments.Count -gt 0) {
+            return $none
+        }
+
+        $bodyText = if ($Message.body.contentType -eq "HTML") {
+            Convert-HtmlToText $Message.body.content
+        } else {
+            $Message.body.content
+        }
+        if ([string]::IsNullOrWhiteSpace($bodyText)) {
+            return $none
+        }
+
+        $reconstructed = Build-SmimeMimeContent -BodyText $bodyText -Attachments @()
+        $crlf = "`r`n"
+        if ($reconstructed.EndsWith($crlf)) {
+            $reconstructed = $reconstructed.Substring(0, $reconstructed.Length - 2)
+        }
+        [byte[]]$contentBytes = [System.Text.Encoding]::UTF8.GetBytes($reconstructed)
+        $normalizedSigBytes = ConvertTo-NormalizedCmsBytes -Bytes $sigBytes -Kind Signed
+
+        $result = Invoke-CmsVerify `
+            -SignatureBytes $normalizedSigBytes -ContentBytes $contentBytes -IsDetached $true
+        $result['Body'] = $bodyText
+        if ($result.Status -eq $Config.SmimeStatus.SignedInvalid) {
+            $bodyPreview = $bodyText.Substring(0, [Math]::Min(300, $bodyText.Length)).
+                Replace("`r", "<CR>").Replace("`n", "<LF>")
+            Write-SmimeDebugDump `
+                -MessageId $MessageId `
+                -AttachmentName $fullAttachment.name `
+                -AttachmentContentType $fullAttachment.contentType `
+                -AttachmentType $attachmentType `
+                -BodyContentType $Message.body.contentType `
+                -BodyPreview $bodyPreview `
+                -RawBytes $sigBytes `
+                -NormalizedBytes $normalizedSigBytes `
+                -Error $result.Error
+        }
+        return $result
+    } catch {
+        $bodyPreview = if ($Message.body.content) {
+            $body = if ($Message.body.contentType -eq "HTML") {
+                Convert-HtmlToText $Message.body.content
+            } else {
+                $Message.body.content
+            }
+            $body.Substring(0, [Math]::Min(300, $body.Length)).
+                Replace("`r", "<CR>").Replace("`n", "<LF>")
+        } else { "" }
+        Write-SmimeDebugDump `
+            -MessageId $MessageId `
+            -AttachmentName $fullAttachment.name `
+            -AttachmentContentType $fullAttachment.contentType `
+            -AttachmentType $attachmentType `
+            -BodyContentType $Message.body.contentType `
+            -BodyPreview $bodyPreview `
+            -RawBytes $sigBytes `
+            -NormalizedBytes $normalizedSigBytes `
+            -Error $_.Exception.Message
+        $none.Error = $_.Exception.Message
+        return $none
+    }
 }
 
 function Get-SmimePlaintextBody {
@@ -546,6 +956,77 @@ function Get-SmimePlaintextBody {
     return $null
 }
 
+function Get-SmimeStatusFromMimeContent {
+    <#
+    .SYNOPSIS
+    Evaluate S/MIME status from already available raw MIME content.
+    #>
+    param([Parameter(Mandatory)][string]$MimeContent)
+
+    $none = @{
+        Status = $Config.SmimeStatus.None
+        IsEncrypted = $false
+        Subject = ""; Issuer = ""; ValidUntil = ""; Error = ""; Body = $null
+    }
+
+    try {
+        if ($MimeContent -is [byte[]]) {
+            $MimeContent = [System.Text.Encoding]::UTF8.GetString($MimeContent)
+        }
+
+        $t = Get-SmimeMimeType -MimeContent $MimeContent
+        if ($t -eq "None") { return $none }
+        if ($t -eq "Encrypted") {
+            $decryptErr  = ""
+            $innerMime   = $null
+            $innerType   = "None"
+
+            try {
+                $rawBody  = Get-MimeBodySection -MimeText $MimeContent
+                $encBytes = ConvertFrom-Base64Mime -Body $rawBody.Trim()
+                if ($encBytes) {
+                    $env = New-Object System.Security.Cryptography.Pkcs.EnvelopedCms
+                    $env.Decode([byte[]]$encBytes)
+                    $env.Decrypt()
+                    [byte[]]$innerBytes = $env.ContentInfo.Content
+                    $innerMime = [System.Text.Encoding]::UTF8.GetString($innerBytes)
+                    $innerType = Get-SmimeMimeType -MimeContent $innerMime
+                }
+            } catch {
+                $decryptErr = $_.Exception.Message
+            }
+
+            if ($innerType -ne "None" -and $innerType -ne "Encrypted") {
+                $result = Invoke-SmimeVerification `
+                    -MimeContent $innerMime -SmimeType $innerType
+                $result['IsEncrypted'] = $true
+                $result['Body'] = Get-SmimePlaintextBody `
+                    -MimeContent $innerMime -SmimeType $innerType
+                return $result
+            }
+
+            $decrypted = if ($innerMime) {
+                Get-MimeReadableText -MimeContent $innerMime
+            } else { $null }
+
+            return @{
+                Status = $Config.SmimeStatus.Encrypted
+                IsEncrypted = $true
+                Subject = ""; Issuer = ""; ValidUntil = ""
+                Error  = $decryptErr
+                Body   = $decrypted
+            }
+        }
+
+        $result = Invoke-SmimeVerification -MimeContent $MimeContent -SmimeType $t
+        $result['Body'] = Get-SmimePlaintextBody -MimeContent $MimeContent -SmimeType $t
+        return $result
+    } catch {
+        $none.Error = $_.Exception.Message
+        return $none
+    }
+}
+
 # ============================================================
 # SECTION 2 - S/MIME TYPE DETECTION
 # ============================================================
@@ -564,7 +1045,8 @@ function Get-SmimeMimeType {
     $low = $ct.ToLower()
     if ($low -match 'multipart/signed')       { return "MultipleSigned" }
     if ($low -match 'application/(x-)?pkcs7-mime') {
-        if ($low -match 'smime-type=enveloped-data') { return "Encrypted" }
+        if ($low -match 'smime-type\s*=\s*"?(enveloped-data)"?') { return "Encrypted" }
+        if ($low -match 'smime-type\s*=\s*"?(signed-data)"?') { return "OpaqueSign" }
         return "OpaqueSign"
     }
     return "None"
@@ -592,78 +1074,21 @@ function Get-MessageSmimeStatus {
         [string]$MessageId
     )
 
-    $none = @{
-        Status = $Config.SmimeStatus.None
-        Subject = ""; Issuer = ""; ValidUntil = ""; Error = ""; Body = $null
-    }
-
     try {
         $mime = Get-MessageMime -MessageId $MessageId
-        if (-not $mime) { return $none }
-
-        if ($mime -is [byte[]]) {
-            $mime = [System.Text.Encoding]::UTF8.GetString($mime)
-        }
-
-        $t = Get-SmimeMimeType -MimeContent $mime
-        if ($t -eq "None") { return $none }
-        if ($t -eq "Encrypted") {
-            # Try to decrypt. If the private key is available in CurrentUser\My,
-            # EnvelopedCms.Decrypt() will succeed.
-            # Exchange/Outlook.com also wraps received multipart/signed messages
-            # in enveloped-data for secure storage; after decryption the inner
-            # content may itself be a signed message.
-            $decryptErr  = ""
-            $innerMime   = $null
-            $innerType   = "None"
-
-            try {
-                $rawBody  = Get-MimeBodySection -MimeText $mime
-                $encBytes = ConvertFrom-Base64Mime -Body $rawBody.Trim()
-                if ($encBytes) {
-                    $env = New-Object System.Security.Cryptography.Pkcs.EnvelopedCms
-                    $env.Decode([byte[]]$encBytes)
-                    $env.Decrypt()
-                    [byte[]]$innerBytes = $env.ContentInfo.Content
-                    $innerMime = [System.Text.Encoding]::UTF8.GetString($innerBytes)
-                    $innerType = Get-SmimeMimeType -MimeContent $innerMime
-                }
-            } catch {
-                $decryptErr = $_.Exception.Message
-            }
-
-            # If the decrypted payload is itself a signed message (Exchange
-            # secure-wrapping a received multipart/signed), verify that.
-            if ($innerType -ne "None" -and $innerType -ne "Encrypted") {
-                $result = Invoke-SmimeVerification `
-                    -MimeContent $innerMime -SmimeType $innerType
-                $result['Body'] = Get-SmimePlaintextBody `
-                    -MimeContent $innerMime -SmimeType $innerType
-                return $result
-            }
-
-            # Truly encrypted: body from local decryption or null.
-            $decrypted = if ($innerMime) {
-                Get-MimeReadableText -MimeContent $innerMime
-            } else { $null }
-
+        if (-not $mime) {
             return @{
-                Status = $Config.SmimeStatus.Encrypted
-                Subject = ""; Issuer = ""; ValidUntil = ""
-                Error  = $decryptErr
-                Body   = $decrypted
+                Status = $Config.SmimeStatus.None
+                Subject = ""; Issuer = ""; ValidUntil = ""; Error = ""; Body = $null
             }
         }
-
-        $result = Invoke-SmimeVerification -MimeContent $mime -SmimeType $t
-        # Extract body text so callers can display it even when
-        # Graph API returns empty body.content for signed messages.
-        $result['Body'] = Get-SmimePlaintextBody -MimeContent $mime -SmimeType $t
-        return $result
-
+        return Get-SmimeStatusFromMimeContent -MimeContent $mime
     } catch {
-        $none.Error = $_.Exception.Message
-        return $none
+        return @{
+            Status = $Config.SmimeStatus.None
+            Subject = ""; Issuer = ""; ValidUntil = ""
+            Error = $_.Exception.Message; Body = $null
+        }
     }
 }
 
@@ -850,6 +1275,23 @@ function Show-SmimeInfo {
 
     Write-Host ""
 
+    $isEncrypted = ($Details -and $Details.IsEncrypted) -or
+        $Status -eq $Config.SmimeStatus.Encrypted
+
+    if ($isEncrypted) {
+        Write-Host "Encryption:" -NoNewline `
+            -ForegroundColor $Config.Colors.FieldLabel
+        Write-Host " Encrypted [S/MIME]" -ForegroundColor $Config.Colors.Success
+        if ($Status -eq $Config.SmimeStatus.Encrypted -and $Details -and $Details.Error) {
+            Write-Host "Decrypt:     " -NoNewline `
+                -ForegroundColor $Config.Colors.FieldLabel
+            Write-Host $Details.Error -ForegroundColor $Config.Colors.Warning
+        }
+        if ($Status -ne $Config.SmimeStatus.Encrypted) {
+            Write-Host ""
+        }
+    }
+
     switch ($Status) {
         "SignedTrusted" {
             Write-Host "Signature: " -NoNewline `
@@ -901,9 +1343,11 @@ function Show-SmimeInfo {
             }
         }
         "Encrypted" {
-            Write-Host "Encryption:" -NoNewline `
-                -ForegroundColor $Config.Colors.FieldLabel
-            Write-Host " Encrypted [S/MIME]" -ForegroundColor $Config.Colors.Success
+            if (-not $isEncrypted) {
+                Write-Host "Encryption:" -NoNewline `
+                    -ForegroundColor $Config.Colors.FieldLabel
+                Write-Host " Encrypted [S/MIME]" -ForegroundColor $Config.Colors.Success
+            }
             if ($Details -and $Details.Error) {
                 Write-Host "Decrypt:     " -NoNewline `
                     -ForegroundColor $Config.Colors.FieldLabel
@@ -1372,7 +1816,21 @@ function Protect-MessageSmime {
     if ($Sign) {
         $signingCert = Get-DefaultSigningCertificate -EmailAddress $fromEmail
         if (-not $signingCert) {
-            Write-Error-Message "No S/MIME signing certificate for '$fromEmail'. Run SMIME for instructions."
+            $availableSubjects = @(
+                Get-SmimeSigningCertificates | ForEach-Object {
+                    if ($_.Subject -match '(?i)(?:^|,\s*)CN=([^,]+)') {
+                        $matches[1].Trim()
+                    } else {
+                        $_.Subject
+                    }
+                }
+            )
+            $details = if ($availableSubjects.Count -gt 0) {
+                " Available cert subjects: " + ($availableSubjects -join "; ")
+            } else {
+                ""
+            }
+            Write-Error-Message "No S/MIME signing certificate for '$fromEmail'.$details Run SMIME for instructions."
             return $false
         }
         Write-Info "Signing with: $(Extract-CertCN $signingCert.Subject)"

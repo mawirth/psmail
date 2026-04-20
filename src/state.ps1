@@ -2,9 +2,13 @@
 # Global state management
 
 function Test-PersistableSmimeStatus {
-    param([string]$Status)
+    param(
+        [string]$Status,
+        [bool]$IsEncrypted = $false
+    )
 
-    return ($Status -eq $Config.SmimeStatus.SignedTrusted -or
+    return ($IsEncrypted -or
+            $Status -eq $Config.SmimeStatus.SignedTrusted -or
             $Status -eq $Config.SmimeStatus.SignedUntrusted -or
             $Status -eq $Config.SmimeStatus.SignedInvalid)
 }
@@ -30,16 +34,18 @@ function Initialize-State {
             if ($loaded) {
                 foreach ($id in $loaded.Keys) {
                     $e = $loaded[$id]
-                    if (-not (Test-PersistableSmimeStatus $e.Status)) {
+                    if (-not (Test-PersistableSmimeStatus $e.Status ([bool]$e.IsEncrypted))) {
                         $smimeCacheNeedsCleanup = $true
                         continue
                     }
                     $smimeCache[$id] = @{
                         Status     = $e.Status
+                        IsEncrypted = [bool]$e.IsEncrypted
                         Subject    = $e.Subject    ?? ""
                         Issuer     = $e.Issuer     ?? ""
                         ValidUntil = $e.ValidUntil ?? ""
                         Error      = $e.Error      ?? ""
+                        HasUserAttachments = $e.HasUserAttachments
                         Body       = $null
                     }
                 }
@@ -77,15 +83,21 @@ function Save-SmimeCache {
         $toSave = @{}
         foreach ($id in $global:State.SmimeCache.Keys) {
             $e = $global:State.SmimeCache[$id]
-            if (-not (Test-PersistableSmimeStatus $e.Status)) {
+            if (-not (Test-PersistableSmimeStatus $e.Status ([bool]$e.IsEncrypted))) {
                 continue
             }
             $toSave[$id] = @{
                 Status     = $e.Status
+                IsEncrypted = [bool]$e.IsEncrypted
                 Subject    = if ($e.Subject)    { $e.Subject    } else { "" }
                 Issuer     = if ($e.Issuer)     { $e.Issuer     } else { "" }
                 ValidUntil = if ($e.ValidUntil) { $e.ValidUntil } else { "" }
                 Error      = if ($e.Error)      { $e.Error      } else { "" }
+                HasUserAttachments = if ($null -ne $e.HasUserAttachments) {
+                    [bool]$e.HasUserAttachments
+                } else {
+                    $null
+                }
             }
         }
         $toSave | ConvertTo-Json -Depth 3 |

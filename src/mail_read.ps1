@@ -76,13 +76,21 @@ function Invoke-OpenMessage {
             Save-SmimeCache
         }
         $item.SmimeStatus = $smimeResult.Status
+        $item.IsEncrypted = [bool]$smimeResult.IsEncrypted
+
+        # Attachments — filter out S/MIME structural files early so the result can
+        # also be reused for fallback verification and list-cache cleanup.
+        $userAttachments = @($fileAttachments | Where-Object {
+            -not (Test-IsSmimeStructuralAttachment -Attachment $_ -MessageId $item.Id)
+        })
 
         # Fallback/reconciliation when raw MIME is inaccessible or an old cache
         # entry classified an opaque-signed smime.p7m as encrypted.
         if ($fileAttachments.Count -gt 0) {
             $structuralAttachment = @(
                 $fileAttachments | Where-Object {
-                    $_.name -ieq 'smime.p7s' -or $_.name -ieq 'smime.p7m'
+                    Test-IsSmimeStructuralAttachment `
+                        -Attachment $_ -MessageId $item.Id
                 }
             ) | Select-Object -First 1
 
@@ -90,16 +98,50 @@ function Invoke-OpenMessage {
                 $attachmentType = Get-SmimeTypeFromAttachment `
                     -Attachment $structuralAttachment -MessageId $item.Id
 
+                $attachmentFallback = Get-SmimeStatusFromAttachmentFallback `
+                    -Message $msg `
+                    -Attachment $structuralAttachment `
+                    -MessageId $item.Id `
+                    -UserAttachments $userAttachments
+                if ($attachmentFallback.Status -ne $Config.SmimeStatus.None) {
+                    $smimeResult = $attachmentFallback
+                    $item.SmimeStatus = $attachmentFallback.Status
+                    $item.IsEncrypted = [bool]$attachmentFallback.IsEncrypted
+                    $global:State.SmimeCache[$item.Id] = $smimeResult
+                    Save-SmimeCache
+                }
+
+                $isExplicitSignature = Test-IsExplicitSignatureAttachment `
+                    -Attachment $structuralAttachment
+
                 if ($attachmentType -eq "MultipleSigned" -or
                     $attachmentType -eq "OpaqueSign") {
-                    if ($item.SmimeStatus -eq $Config.SmimeStatus.None -or
-                        $item.SmimeStatus -eq $Config.SmimeStatus.Encrypted) {
+                    if ($item.SmimeStatus -eq $Config.SmimeStatus.SignedTrusted -or
+                        $item.SmimeStatus -eq $Config.SmimeStatus.SignedUntrusted -or
+                        $item.SmimeStatus -eq $Config.SmimeStatus.SignedInvalid) {
+                        # Verified via attachment reconstruction above.
+                    } elseif ($isExplicitSignature -and
+                        ($item.SmimeStatus -eq $Config.SmimeStatus.None -or
+                        $item.SmimeStatus -eq $Config.SmimeStatus.Encrypted)) {
                         $item.SmimeStatus = $Config.SmimeStatus.SignedUntrusted
                         $smimeResult = @{
                             Status     = $Config.SmimeStatus.SignedUntrusted
+                            IsEncrypted = $false
                             Subject    = ""; Issuer = ""; ValidUntil = ""
                             Error      = "Signature detected but could not be verified"
                             Body       = $null
+                        }
+                        $item.IsEncrypted = $false
+                        $global:State.SmimeCache[$item.Id] = $smimeResult
+                        Save-SmimeCache
+                    } elseif (-not $isExplicitSignature -and
+                        $item.SmimeStatus -eq $Config.SmimeStatus.None) {
+                        $item.SmimeStatus = $Config.SmimeStatus.Encrypted
+                        $item.IsEncrypted = $true
+                        $smimeResult = @{
+                            Status = $Config.SmimeStatus.Encrypted
+                            IsEncrypted = $true
+                            Subject = ""; Issuer = ""; ValidUntil = ""; Error = ""; Body = $null
                         }
                         $global:State.SmimeCache[$item.Id] = $smimeResult
                         Save-SmimeCache
@@ -107,8 +149,10 @@ function Invoke-OpenMessage {
                 } elseif ($attachmentType -eq "Encrypted" -and
                           $item.SmimeStatus -eq $Config.SmimeStatus.None) {
                     $item.SmimeStatus = $Config.SmimeStatus.Encrypted
+                    $item.IsEncrypted = $true
                     $smimeResult = @{
                         Status = $Config.SmimeStatus.Encrypted
+                        IsEncrypted = $true
                         Subject = ""; Issuer = ""; ValidUntil = ""; Error = ""; Body = $null
                     }
                     $global:State.SmimeCache[$item.Id] = $smimeResult
@@ -126,9 +170,15 @@ function Invoke-OpenMessage {
     }
 
     # Attachments — use the already-fetched list; filter out S/MIME structural files
-    $userAttachments = @($fileAttachments | Where-Object {
-        $_.name -ine 'smime.p7s' -and $_.name -ine 'smime.p7m'
-    })
+    if ($smimeResult) {
+        $smimeResult['HasUserAttachments'] = ($userAttachments.Count -gt 0)
+        $smimeResult['IsEncrypted'] = [bool]$item.IsEncrypted
+        if ($global:State.SmimeCache) {
+            $global:State.SmimeCache[$item.Id] = $smimeResult
+            Save-SmimeCache
+        }
+    }
+    $item.HasAttachments = ($userAttachments.Count -gt 0)
     if ($userAttachments.Count -gt 0) {
         Write-Host ""
         Write-Host "Attachments: " -NoNewline -ForegroundColor $Config.Colors.FieldLabel

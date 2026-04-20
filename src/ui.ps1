@@ -102,7 +102,8 @@ function Render-MessageRow {
     
     # E (encrypted) and S (signing) icons - inbox only
     if ($View -eq "inbox") {
-        $encIcon   = if ($Item.SmimeStatus -eq $Config.SmimeStatus.Encrypted) {
+        $encIcon   = if ($Item.IsEncrypted -or
+            $Item.SmimeStatus -eq $Config.SmimeStatus.Encrypted) {
             "E"
         } else {
             " "

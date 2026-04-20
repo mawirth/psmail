@@ -24,6 +24,7 @@ function ConvertTo-MessageItem {
         IsRead = $Message.isRead
         HasAttachments = $Message.hasAttachments
         SmimeStatus = $Config.SmimeStatus.None
+        IsEncrypted = $false
     }
     
     # Extract first To recipient
@@ -38,9 +39,14 @@ function ConvertTo-MessageItem {
     $item.SmimeStatus = $Config.SmimeStatus.None
     if ($global:State.SmimeCache -and
         $global:State.SmimeCache.ContainsKey($Message.id)) {
-        $cachedStatus = $global:State.SmimeCache[$Message.id].Status
+        $cacheEntry = $global:State.SmimeCache[$Message.id]
+        $cachedStatus = $cacheEntry.Status
         if ($cachedStatus -ne $Config.SmimeStatus.Encrypted) {
             $item.SmimeStatus = $cachedStatus
+        }
+        $item.IsEncrypted = [bool]$cacheEntry.IsEncrypted
+        if ($null -ne $cacheEntry.HasUserAttachments) {
+            $item.HasAttachments = [bool]$cacheEntry.HasUserAttachments
         }
     }
 
