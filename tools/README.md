@@ -30,7 +30,7 @@ Example result without logos:
 ```text
 Mit freundlichen Grüßen,
 
-Martin Wirth
+Max Mustermann
 max@example.com
 Mobil: +49 170 1234567
 ```
@@ -42,7 +42,7 @@ possible.
 
 ```powershell
 .\tools\Create-Footer.ps1 `
-    -Name "Martin Wirth" `
+    -Name "Max Mustermann" `
     -Email "max@example.com" `
     -Mobile "+49 170 1234567" `
     -AccountKey "max@example.com__consumers"
@@ -73,7 +73,7 @@ Minimal private footer:
 
 ```powershell
 .\tools\Create-Footer.ps1 `
-    -Name "Martin Wirth" `
+    -Name "Max Mustermann" `
     -Email "max@example.com" `
     -Mobile "+49 170 1234567" `
     -AccountKey "max@example.com__consumers"
@@ -83,7 +83,7 @@ Plain-text footer instead of HTML:
 
 ```powershell
 .\tools\Create-Footer.ps1 `
-    -Name "Martin Wirth" `
+    -Name "Max Mustermann" `
     -Email "max@example.com" `
     -Mobile "+49 170 1234567" `
     -AccountKey "max@example.com__consumers" `
@@ -94,7 +94,7 @@ Richer footer with optional fields:
 
 ```powershell
 .\tools\Create-Footer.ps1 `
-    -Name "Martin Wirth" `
+    -Name "Max Mustermann" `
     -Title "Projektleitung" `
     -Email "max@example.com" `
     -Mobile "+49 170 1234567" `
@@ -108,7 +108,7 @@ Address lines:
 
 ```powershell
 .\tools\Create-Footer.ps1 `
-    -Name "Martin Wirth" `
+    -Name "Max Mustermann" `
     -AddressLines "Musterstrasse 1","78462 Konstanz" `
     -AccountKey "max@example.com__consumers"
 ```

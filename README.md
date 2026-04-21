@@ -57,7 +57,7 @@ pwsh .\psmail.ps1
 
 ```powershell
 .\tools\Create-Footer.ps1 `
-    -Name "Martin Wirth" `
+    -Name "Max Mustermann" `
     -Email "max@example.com" `
     -Mobile "+49 170 1234567" `
     -AccountKey "max@example.com__consumers"
