@@ -102,6 +102,16 @@ The simplest useful `1.2` would be:
 
 ## Other plausible next steps
 
+- add account profiles with explicit `ACCOUNT ADD`, `ACCOUNT LIST`, and `ACCOUNT SWITCH <name>` commands
+- support switching between Microsoft accounts in one psmail install, while keeping only one active Graph session at a time
+- move local state to per-account storage, for example `data/accounts/<account-key>/...`, so S/MIME cache/draft flags and future local metadata do not mix between accounts
+- reset and reload in-memory state on account switch: current folder, message list, next link, open message, filter, and account-specific caches
+- show active account identity in the UI header so mailbox switches are always obvious
+- define a stable account key format based on resolved mailbox address plus tenant identifier when available
+- prefer this account-switch flow: first `ACCOUNT ADD` does a full login, later `ACCOUNT SWITCH` first tries to reuse a cached Graph context/token and only falls back to interactive re-authentication when needed
+- verify how reliably `Connect-MgGraph -ContextScope CurrentUser` can restore per-account contexts across personal Microsoft accounts and work/school tenants
+- add a non-destructive `ACCOUNT REMOVE` flow that deletes only the local profile metadata, not the Microsoft Graph login itself
+- document account-switching constraints clearly, especially differences between personal Microsoft accounts and work/school tenants
 - more interop testing with S/MIME messages from different clients
 - improve MIME handling for rarer nested multipart structures
 - add a debug command for inspecting S/MIME/message structure without patching code
