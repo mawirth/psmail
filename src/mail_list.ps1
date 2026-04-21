@@ -244,6 +244,19 @@ function Invoke-RefreshMessageList {
         Set-StatusMessage -Message $statusMessage -Color "Success"
     }
 
+    if ($global:State.View -eq $Config.Folders.Drafts -and
+        (Get-Command Cleanup-StaleEncryptedDraftData -ErrorAction SilentlyContinue)) {
+        $currentDraftIds = @($global:State.Items | ForEach-Object { $_.Id })
+        $removedEncryptedDrafts = Cleanup-StaleEncryptedDraftData -CurrentDraftIds $currentDraftIds
+        if ($removedEncryptedDrafts -gt 0) {
+            $cleanupMessage = "Removed $removedEncryptedDrafts stale local encrypted draft entr$(if ($removedEncryptedDrafts -eq 1) { 'y' } else { 'ies' })"
+            if ($global:State.StatusMessage) {
+                $cleanupMessage = "$($global:State.StatusMessage) | $cleanupMessage"
+            }
+            Set-StatusMessage -Message $cleanupMessage -Color "Info"
+        }
+    }
+
     # Display the refreshed message list
     Show-CurrentView
     Show-MessageList

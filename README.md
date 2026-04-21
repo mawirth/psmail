@@ -14,6 +14,7 @@ using **Microsoft Graph API**.
 - **Contact search** — search email history, copy address to clipboard
 - **Filtering** — server-side search by sender, subject, or body across all folders
 - **S/MIME** — verify incoming signatures, decrypt incoming encrypted mail, sign and encrypt outgoing mail
+- **Safer encrypted drafts** — `Encrypt: yes` keeps cleartext body and attachment paths local and stores only an online placeholder draft until send
 - **HTML cleanup** — converts HTML emails to readable plain text
 - **Folder management** — Inbox, Drafts, Sent, Deleted, Junk
 - **Stable viewport filling** — message lists fill exactly one screen without clearing the console
@@ -92,6 +93,8 @@ S/MIME status is verified on first open and cached locally. Pure S/MIME structur
 
 Encrypted and signed messages can show both markers at once: `E` for encryption and `S` for the inner signature status.
 
+Opening messages in `Sent` uses the same S/MIME verification/decryption path as `Inbox`, so your own sent encrypted mail is readable there as well when the matching private key is available locally.
+
 ## Documentation
 
 | Document | Contents |
@@ -143,9 +146,18 @@ Disconnect-MgGraph
 
 - Incoming signed mail: verified and shown with trusted/untrusted/invalid status
 - Incoming encrypted mail: decrypted locally if a matching private key exists
+- Sent encrypted mail: opened through the same local decrypt/verify path as Inbox
 - Incoming encrypted + signed mail: both encryption and signature are indicated
 - Outgoing signing/encryption: uses certificates from the Windows certificate store
+- Online revocation checking: Windows chain validation performs OCSP/CRL checks with timeout
+- Encrypted drafts: cleartext body is kept local; the online Drafts folder only stores a placeholder until send
+- HTML footer preservation: signed/encrypted HTML drafts keep `footer.html` as HTML instead of flattening it to text
 - S/MIME state is cached locally for list markers; message bodies are not persisted in the cache
+
+## Release Scope
+
+- **Version 1.1**: S/MIME foundation for psmail — verification, local decryption, outgoing signing/encryption, safer encrypted drafts, and account-specific local state
+- **Version 1.2 idea**: optional GPT-assisted reply workflow with local review queue before any explicit send action
 
 ## License
 

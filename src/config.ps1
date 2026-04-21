@@ -201,4 +201,5 @@ function Set-AccountStoragePaths {
     $Config.SmimeDraftsPath = Join-Path $accountPath "smime-drafts.json"
     $Config.SmimeCachePath  = Join-Path $accountPath "smime-cache.json"
     $Config.SmimeDebugPath  = Join-Path $accountPath "smime-debug.txt"
+    $Config.SmimeDraftAssetsPath = Join-Path $accountPath "smime-draft-assets"
 }

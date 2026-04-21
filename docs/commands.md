@@ -135,6 +135,9 @@ The footer from the active account folder
 (`data/accounts/<account-key>/footer.txt` or `footer.html`) is appended automatically.
 Attachments are validated and uploaded after saving.
 
+If `Encrypt: yes` is set, psmail keeps the body and attachment paths locally on
+this computer and only stores a placeholder draft online until you send it.
+
 ### Editing a Draft
 
 ```
@@ -142,6 +145,8 @@ Attachments are validated and uploaded after saving.
 ```
 
 Opens the draft in Neovim. Save with `:wq`, cancel with `:q!`.
+For `Encrypt: yes` drafts, psmail opens the locally stored cleartext body and
+local attachment paths rather than the online placeholder text.
 
 ### Sending
 

@@ -62,9 +62,9 @@ function Invoke-OpenMessage {
         )
     }
 
-    # S/MIME verification (inbox only; result is cached per session)
+    # S/MIME verification (all read-only folders; result is cached per session)
     $smimeResult = $null
-    if ($global:State.View -eq "inbox" -and $Config.SmimeConfig.AutoVerify) {
+    if ($global:State.View -ne $Config.Folders.Drafts -and $Config.SmimeConfig.AutoVerify) {
         if (-not $global:State.SmimeCache) { $global:State.SmimeCache = @{} }
         if ($global:State.SmimeCache.ContainsKey($item.Id)) {
             $smimeResult = $global:State.SmimeCache[$item.Id]
@@ -414,25 +414,47 @@ $quotedBody
     }
     
     $toRecipients  = ConvertTo-RecipientArray $parsed.To
-    $footerResult  = Apply-DraftFooterBeforeQuotedSection `
-        -BodyText $parsed.Body `
-        -QuotedSectionHeader $Config.EmailTemplates.OriginalMessageHeader
-    
-    # Create draft
-    $draft = New-DraftMessage `
-        -Subject      $parsed.Subject `
-        -Body         $footerResult.Body `
-        -ToRecipients $toRecipients `
-        -ContentType  $footerResult.ContentType
+
+    if ($parsed.Encrypt) {
+        $draft = New-DraftMessage `
+            -Subject      $parsed.Subject `
+            -Body         (Get-EncryptedDraftPlaceholderBody) `
+            -ToRecipients $toRecipients `
+            -ContentType  "Text"
+    } else {
+        $footerResult  = Apply-DraftFooterBeforeQuotedSection `
+            -BodyText $parsed.Body `
+            -QuotedSectionHeader $Config.EmailTemplates.OriginalMessageHeader
+
+        # Create draft
+        $draft = New-DraftMessage `
+            -Subject      $parsed.Subject `
+            -Body         $footerResult.Body `
+            -ToRecipients $toRecipients `
+            -ContentType  $footerResult.ContentType
+    }
     
     if (-not $draft) {
         Write-Error-Message "Failed to create reply"
         return
     }
-    
-    Set-DraftSmimeFlag -MessageId $draft.id -Sign $parsed.Sign -Encrypt $parsed.Encrypt
-    Write-Success "Reply draft created (ID: $($draft.id))"
-    Invoke-UploadAttachments -MessageId $draft.id -FilePaths $resolvedAttachments
+
+    if ($parsed.Encrypt) {
+        if (-not (Save-EncryptedDraftLocally `
+            -MessageId $draft.id `
+            -ParsedDraft $parsed `
+            -ResolvedAttachments $resolvedAttachments)) {
+            Remove-Message -MessageId $draft.id | Out-Null
+            Write-Error-Message "Failed to prepare encrypted reply draft"
+            return
+        }
+        Write-Success "Reply draft created (ID: $($draft.id))"
+        Write-Info "Encrypted reply body is kept local; online draft is a placeholder"
+    } else {
+        Set-DraftSmimeFlag -MessageId $draft.id -Sign $parsed.Sign -Encrypt $parsed.Encrypt
+        Write-Success "Reply draft created (ID: $($draft.id))"
+        Invoke-UploadAttachments -MessageId $draft.id -FilePaths $resolvedAttachments
+    }
     Write-Info "Reply saved in Drafts folder"
 }
 
@@ -537,25 +559,47 @@ $forwardedBody
     }
     
     $toRecipients = ConvertTo-RecipientArray $parsed.To
-    $footerResult = Apply-DraftFooterBeforeQuotedSection `
-        -BodyText $parsed.Body `
-        -QuotedSectionHeader $Config.EmailTemplates.ForwardedMessageHeader
-    
-    # Create draft
-    $draft = New-DraftMessage `
-        -Subject      $parsed.Subject `
-        -Body         $footerResult.Body `
-        -ToRecipients $toRecipients `
-        -ContentType  $footerResult.ContentType
+
+    if ($parsed.Encrypt) {
+        $draft = New-DraftMessage `
+            -Subject      $parsed.Subject `
+            -Body         (Get-EncryptedDraftPlaceholderBody) `
+            -ToRecipients $toRecipients `
+            -ContentType  "Text"
+    } else {
+        $footerResult = Apply-DraftFooterBeforeQuotedSection `
+            -BodyText $parsed.Body `
+            -QuotedSectionHeader $Config.EmailTemplates.ForwardedMessageHeader
+
+        # Create draft
+        $draft = New-DraftMessage `
+            -Subject      $parsed.Subject `
+            -Body         $footerResult.Body `
+            -ToRecipients $toRecipients `
+            -ContentType  $footerResult.ContentType
+    }
     
     if (-not $draft) {
         Write-Error-Message "Failed to create forward"
         return
     }
-    
-    Set-DraftSmimeFlag -MessageId $draft.id -Sign $parsed.Sign -Encrypt $parsed.Encrypt
-    Write-Success "Forward draft created (ID: $($draft.id))"
-    Invoke-UploadAttachments -MessageId $draft.id -FilePaths $resolvedAttachments
+
+    if ($parsed.Encrypt) {
+        if (-not (Save-EncryptedDraftLocally `
+            -MessageId $draft.id `
+            -ParsedDraft $parsed `
+            -ResolvedAttachments $resolvedAttachments)) {
+            Remove-Message -MessageId $draft.id | Out-Null
+            Write-Error-Message "Failed to prepare encrypted forward draft"
+            return
+        }
+        Write-Success "Forward draft created (ID: $($draft.id))"
+        Write-Info "Encrypted forward body is kept local; online draft is a placeholder"
+    } else {
+        Set-DraftSmimeFlag -MessageId $draft.id -Sign $parsed.Sign -Encrypt $parsed.Encrypt
+        Write-Success "Forward draft created (ID: $($draft.id))"
+        Invoke-UploadAttachments -MessageId $draft.id -FilePaths $resolvedAttachments
+    }
     Write-Info "Forward saved in Drafts folder"
 }
 

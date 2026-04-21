@@ -318,6 +318,34 @@ function Get-Attachment {
     return Invoke-GraphRequest -Method GET -Uri $uri
 }
 
+function Remove-Attachment {
+    <#
+    .SYNOPSIS
+    Delete an attachment from a draft message
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$MessageId,
+
+        [Parameter(Mandatory)]
+        [string]$AttachmentId
+    )
+
+    $uri = "/v1.0/me/messages/$MessageId/attachments/$AttachmentId"
+
+    try {
+        Invoke-MgGraphRequest `
+            -Method DELETE `
+            -Uri $uri `
+            -ErrorAction Stop
+        return @{ success = $true }
+    } catch {
+        Write-Error-Message ("Failed to delete attachment: {0}" `
+            -f $_.Exception.Message)
+        return $null
+    }
+}
+
 function Get-FilteredMessages {
     <#
     .SYNOPSIS

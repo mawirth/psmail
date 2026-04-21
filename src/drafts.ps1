@@ -1,6 +1,229 @@
 # drafts.ps1
 # Draft lifecycle management
 
+function Get-EncryptedDraftPlaceholderBody {
+    return "[Encrypted draft stored locally on this computer]"
+}
+
+function Ensure-SmimeDraftAssetsRoot {
+    if (-not (Test-Path $Config.SmimeDraftAssetsPath)) {
+        New-Item -ItemType Directory -Path $Config.SmimeDraftAssetsPath -Force | Out-Null
+    }
+}
+
+function Get-SmimeDraftAssetDirectory {
+    param([Parameter(Mandatory)][string]$MessageId)
+
+    Ensure-SmimeDraftAssetsRoot
+    return (Join-Path $Config.SmimeDraftAssetsPath $MessageId)
+}
+
+function Remove-LocalEncryptedDraftAssets {
+    param([Parameter(Mandatory)][string]$MessageId)
+
+    if (-not $Config.SmimeDraftAssetsPath) { return }
+    $assetDir = Join-Path $Config.SmimeDraftAssetsPath $MessageId
+    if (Test-Path $assetDir) {
+        Remove-Item -LiteralPath $assetDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-LocalEncryptedDraftData {
+    param([Parameter(Mandatory)][string]$MessageId)
+
+    if (-not $global:State.SmimeDrafts) { return $null }
+    if (-not $global:State.SmimeDrafts.ContainsKey($MessageId)) { return $null }
+
+    $entry = $global:State.SmimeDrafts[$MessageId]
+    if (-not $entry.LocalOnly) { return $null }
+
+    return @{
+        Sign        = [bool]$entry.Sign
+        Encrypt     = [bool]$entry.Encrypt
+        LocalOnly   = [bool]$entry.LocalOnly
+        To          = if ($entry.To) { "$($entry.To)" } else { "" }
+        Subject     = if ($entry.Subject) { "$($entry.Subject)" } else { "" }
+        Body        = if ($entry.Body) { "$($entry.Body)" } else { "" }
+        Attachments = @($entry.Attachments)
+    }
+}
+
+function Set-LocalEncryptedDraftData {
+    param(
+        [Parameter(Mandatory)][string]$MessageId,
+        [string]$To = "",
+        [string]$Subject = "",
+        [string]$Body = "",
+        [array]$Attachments = @(),
+        [bool]$Sign = $false,
+        [bool]$Encrypt = $true
+    )
+
+    if (-not $global:State.SmimeDrafts) { $global:State.SmimeDrafts = @{} }
+
+    $global:State.SmimeDrafts[$MessageId] = @{
+        Sign        = $Sign
+        Encrypt     = $Encrypt
+        LocalOnly   = $true
+        To          = $To
+        Subject     = $Subject
+        Body        = $Body
+        Attachments = @($Attachments)
+    }
+    Save-SmimeDrafts
+}
+
+function Clear-LocalEncryptedDraftData {
+    param(
+        [Parameter(Mandatory)][string]$MessageId,
+        [bool]$Sign = $false,
+        [bool]$Encrypt = $false
+    )
+
+    if (-not $global:State.SmimeDrafts) { $global:State.SmimeDrafts = @{} }
+    $global:State.SmimeDrafts[$MessageId] = @{
+        Sign = $Sign
+        Encrypt = $Encrypt
+    }
+    Save-SmimeDrafts
+}
+
+function Update-EncryptedDraftPlaceholder {
+    param(
+        [Parameter(Mandatory)][string]$MessageId,
+        [string]$Subject = "",
+        [array]$ToRecipients = @()
+    )
+
+    $updates = @{
+        subject = $Subject
+        body = @{
+            contentType = "Text"
+            content = (Get-EncryptedDraftPlaceholderBody)
+        }
+        toRecipients = $ToRecipients
+    }
+
+    $result = Update-Message -MessageId $MessageId -Properties $updates
+    if (-not $result) { return $false }
+
+    $attachments = Get-MessageAttachments -MessageId $MessageId
+    foreach ($attachment in $attachments) {
+        if (-not (Remove-Attachment -MessageId $MessageId -AttachmentId $attachment.id)) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+function Copy-ExistingDraftAttachmentsToLocal {
+    param([Parameter(Mandatory)][string]$MessageId)
+
+    $attachments = Get-MessageAttachments -MessageId $MessageId
+    if (-not $attachments -or $attachments.Count -eq 0) {
+        return @()
+    }
+
+    $assetDir = Get-SmimeDraftAssetDirectory -MessageId $MessageId
+    if (-not (Test-Path $assetDir)) {
+        New-Item -ItemType Directory -Path $assetDir -Force | Out-Null
+    }
+
+    $localPaths = @()
+    foreach ($attachment in $attachments) {
+        if ($attachment.isInline) { continue }
+
+        $fullAttachment = Get-Attachment -MessageId $MessageId -AttachmentId $attachment.id
+        if (-not $fullAttachment -or -not $fullAttachment.contentBytes) {
+            Write-Error-Message "Failed to copy attachment locally: $($attachment.name)"
+            return $null
+        }
+
+        $targetPath = Join-Path $assetDir $attachment.name
+        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($attachment.name)
+        $extension = [System.IO.Path]::GetExtension($attachment.name)
+        $suffix = 1
+        while (Test-Path $targetPath) {
+            $targetPath = Join-Path $assetDir ("{0}_{1}{2}" -f $baseName, $suffix, $extension)
+            $suffix++
+        }
+
+        [System.IO.File]::WriteAllBytes(
+            $targetPath,
+            [Convert]::FromBase64String($fullAttachment.contentBytes)
+        )
+        $localPaths += $targetPath
+    }
+
+    return @($localPaths)
+}
+
+function Save-EncryptedDraftLocally {
+    param(
+        [Parameter(Mandatory)][string]$MessageId,
+        [Parameter(Mandatory)][hashtable]$ParsedDraft,
+        [array]$ResolvedAttachments = @(),
+        [array]$ExistingLocalAttachments = @()
+    )
+
+    $toRecipients = ConvertTo-RecipientArray $ParsedDraft.To
+    if (-not (Update-EncryptedDraftPlaceholder `
+        -MessageId $MessageId `
+        -Subject $ParsedDraft.Subject `
+        -ToRecipients $toRecipients)) {
+        return $false
+    }
+
+    $attachmentPaths = @($ExistingLocalAttachments + $ResolvedAttachments)
+    Set-LocalEncryptedDraftData `
+        -MessageId $MessageId `
+        -To $ParsedDraft.To `
+        -Subject $ParsedDraft.Subject `
+        -Body $ParsedDraft.Body `
+        -Attachments $attachmentPaths `
+        -Sign $ParsedDraft.Sign `
+        -Encrypt $ParsedDraft.Encrypt
+
+    return $true
+}
+
+function Cleanup-StaleEncryptedDraftData {
+    <#
+    .SYNOPSIS
+    Remove local encrypted-draft payloads whose backing online draft no longer exists.
+    #>
+    param([array]$CurrentDraftIds = @())
+
+    if (-not $global:State.SmimeDrafts) {
+        return 0
+    }
+
+    $removedCount = 0
+    $localOnlyIds = @(
+        $global:State.SmimeDrafts.Keys | Where-Object {
+            $entry = $global:State.SmimeDrafts[$_]
+            $entry -and $entry.LocalOnly
+        }
+    )
+
+    foreach ($messageId in $localOnlyIds) {
+        if ($CurrentDraftIds -contains $messageId) {
+            continue
+        }
+
+        $draft = Get-Message -MessageId $messageId
+        if ($draft) {
+            continue
+        }
+
+        Remove-DraftSmimeFlag -MessageId $messageId
+        $removedCount++
+    }
+
+    return $removedCount
+}
+
 function Invoke-NewDraft {
     <#
     .SYNOPSIS
@@ -48,17 +271,26 @@ $separator
         $resolvedAttachments = $validationResult.Resolved
     }
     
-    $footerResult  = Apply-DraftFooter $parsed.Body
-    $contentType   = $footerResult.ContentType
-    $body          = $footerResult.Body
     $toRecipients  = ConvertTo-RecipientArray $parsed.To
-    
-    # Create draft via Graph
-    $draft = New-DraftMessage `
-        -Subject      $parsed.Subject `
-        -Body         $body `
-        -ToRecipients $toRecipients `
-        -ContentType  $contentType
+
+    if ($parsed.Encrypt) {
+        $draft = New-DraftMessage `
+            -Subject      $parsed.Subject `
+            -Body         (Get-EncryptedDraftPlaceholderBody) `
+            -ToRecipients $toRecipients `
+            -ContentType  "Text"
+    } else {
+        $footerResult  = Apply-DraftFooter $parsed.Body
+        $contentType   = $footerResult.ContentType
+        $body          = $footerResult.Body
+
+        # Create draft via Graph
+        $draft = New-DraftMessage `
+            -Subject      $parsed.Subject `
+            -Body         $body `
+            -ToRecipients $toRecipients `
+            -ContentType  $contentType
+    }
     
     if (-not $draft) {
         Write-Error-Message "Failed to create draft"
@@ -67,13 +299,25 @@ $separator
     
     Write-Success "Draft created (ID: $($draft.id))"
     
-    # Store S/MIME flags in session state (persisted to disk by Set-DraftSmimeFlag)
-    Set-DraftSmimeFlag `
-        -MessageId $draft.id `
-        -Sign      $parsed.Sign `
-        -Encrypt   $parsed.Encrypt
-    
-    Invoke-UploadAttachments -MessageId $draft.id -FilePaths $resolvedAttachments
+    if ($parsed.Encrypt) {
+        if (-not (Save-EncryptedDraftLocally `
+            -MessageId $draft.id `
+            -ParsedDraft $parsed `
+            -ResolvedAttachments $resolvedAttachments)) {
+            Remove-Message -MessageId $draft.id | Out-Null
+            Write-Error-Message "Failed to prepare encrypted draft"
+            return
+        }
+        Write-Info "Encrypted draft body is kept local; online draft is a placeholder"
+    } else {
+        # Store S/MIME flags in session state (persisted to disk by Set-DraftSmimeFlag)
+        Set-DraftSmimeFlag `
+            -MessageId $draft.id `
+            -Sign      $parsed.Sign `
+            -Encrypt   $parsed.Encrypt
+
+        Invoke-UploadAttachments -MessageId $draft.id -FilePaths $resolvedAttachments
+    }
 }
 
 function Invoke-EditDraft {
@@ -106,34 +350,49 @@ function Invoke-EditDraft {
         }) -join ", "
     }
     
-    # Get existing attachments
-    $existingAttachments = Get-MessageAttachments `
-        -MessageId $item.Id
-    $attachmentList = ""
-    if ($existingAttachments `
-        -and $existingAttachments.Count -gt 0) {
-        $prefix = $Config.EmailTemplates.ExistingAttachmentPrefix
-        $suffix = $Config.EmailTemplates.ExistingAttachmentSuffix
-        $attachmentList = ($existingAttachments | ForEach-Object { 
-            "$prefix$($_.name)$suffix" 
-        }) -join ", "
-    }
-    
     # Get current S/MIME flags for this draft
     $existingFlags = Get-DraftSmimeFlag -MessageId $item.Id
     $signVal       = if ($existingFlags.Sign)    { "yes" } else { "no" }
     $encryptVal    = if ($existingFlags.Encrypt) { "yes" } else { "no" }
-    
-    # Get body content and convert HTML to text if needed
-    $bodyContent = $draft.body.content
-    if ($draft.body.contentType -eq "HTML") {
-        $bodyContent = Convert-HtmlToText $bodyContent
+
+    $localEncryptedDraft = Get-LocalEncryptedDraftData -MessageId $item.Id
+    $attachmentList = ""
+    $bodyContent = ""
+    $subjectLine = $draft.subject
+    $toListForEdit = $toList
+    $existingAttachments = @()
+
+    if ($localEncryptedDraft) {
+        $bodyContent = $localEncryptedDraft.Body
+        $subjectLine = $localEncryptedDraft.Subject
+        $toListForEdit = $localEncryptedDraft.To
+        if ($localEncryptedDraft.Attachments.Count -gt 0) {
+            $attachmentList = $localEncryptedDraft.Attachments -join ", "
+        }
+    } else {
+        # Get existing attachments
+        $existingAttachments = Get-MessageAttachments `
+            -MessageId $item.Id
+        if ($existingAttachments `
+            -and $existingAttachments.Count -gt 0) {
+            $prefix = $Config.EmailTemplates.ExistingAttachmentPrefix
+            $suffix = $Config.EmailTemplates.ExistingAttachmentSuffix
+            $attachmentList = ($existingAttachments | ForEach-Object { 
+                "$prefix$($_.name)$suffix" 
+            }) -join ", "
+        }
+
+        # Get body content and convert HTML to text if needed
+        $bodyContent = $draft.body.content
+        if ($draft.body.contentType -eq "HTML") {
+            $bodyContent = Convert-HtmlToText $bodyContent
+        }
     }
     
     $separator = $Config.EmailTemplates.HeaderSeparator
     $content = @"
-To: $toList
-Subject: $($draft.subject)
+To: $toListForEdit
+Subject: $subjectLine
 Attachments: $attachmentList
 Sign: $signVal
 Encrypt: $encryptVal
@@ -172,52 +431,81 @@ $bodyContent
     }
     
     $toRecipients = ConvertTo-RecipientArray $parsed.To
-    
-    # Determine if original draft was HTML
-    $wasHtml = ($draft.body.contentType -eq "HTML")
-    $contentType = "Text"
-    $body = $parsed.Body
-    
-    # If original was HTML, convert edited text back to HTML
-    if ($wasHtml) {
-        $contentType = "HTML"
-        $body = Convert-TextToHtml $body
-        
-        # Re-append footer if it exists
-        $footer = Get-Footer
-        if ($footer -and $footer.Type -eq "HTML") {
-            $body += "`n" + $footer.Content
+
+    if ($parsed.Encrypt) {
+        $migratedAttachments = @()
+        if (-not $localEncryptedDraft -and $existingAttachments.Count -gt 0) {
+            $migratedAttachments = Copy-ExistingDraftAttachmentsToLocal -MessageId $item.Id
+            if ($null -eq $migratedAttachments) {
+                Write-Error-Message "Failed to move existing attachments into local encrypted draft storage"
+                return
+            }
         }
-    }
-    
-    # Update draft
-    $updates = @{
-        subject = $parsed.Subject
-        body = @{
-            contentType = $contentType
-            content = $body
+        if (-not (Save-EncryptedDraftLocally `
+            -MessageId $item.Id `
+            -ParsedDraft $parsed `
+            -ResolvedAttachments $resolvedAttachments `
+            -ExistingLocalAttachments $migratedAttachments)) {
+            Write-Error-Message "Failed to update encrypted draft"
+            return
         }
-        toRecipients = $toRecipients
-    }
-    
-    $result = Update-Message `
-        -MessageId $item.Id `
-        -Properties $updates
-    
-    if (-not $result) {
-        Write-Error-Message "Failed to update draft"
+        Write-Success "Draft updated"
+        Write-Info "Encrypted draft body is kept local; online draft is a placeholder"
         return
+    } else {
+        # Determine if original draft was HTML
+        $wasHtml = ($draft.body.contentType -eq "HTML")
+        $contentType = "Text"
+        $body = $parsed.Body
+
+        if ($localEncryptedDraft) {
+            $footerResult = Apply-DraftFooter $parsed.Body
+            $contentType = $footerResult.ContentType
+            $body = $footerResult.Body
+        } elseif ($wasHtml) {
+            # If original was HTML, convert edited text back to HTML
+            $contentType = "HTML"
+            $body = Convert-TextToHtml $body
+
+            # Re-append footer if it exists
+            $footer = Get-Footer
+            if ($footer -and $footer.Type -eq "HTML") {
+                $body += "`n" + $footer.Content
+            }
+        }
+
+        # Update draft
+        $updates = @{
+            subject = $parsed.Subject
+            body = @{
+                contentType = $contentType
+                content = $body
+            }
+            toRecipients = $toRecipients
+        }
+
+        $result = Update-Message `
+            -MessageId $item.Id `
+            -Properties $updates
+
+        if (-not $result) {
+            Write-Error-Message "Failed to update draft"
+            return
+        }
+
+        Write-Success "Draft updated"
+
+        # Update S/MIME flags (persisted to disk by Set-DraftSmimeFlag)
+        Clear-LocalEncryptedDraftData `
+            -MessageId $item.Id `
+            -Sign      $parsed.Sign `
+            -Encrypt   $parsed.Encrypt
+
+        Invoke-UploadAttachments -MessageId $item.Id -FilePaths $resolvedAttachments
+        if ($localEncryptedDraft) {
+            Remove-LocalEncryptedDraftAssets -MessageId $item.Id
+        }
     }
-    
-    Write-Success "Draft updated"
-    
-    # Update S/MIME flags (persisted to disk by Set-DraftSmimeFlag)
-    Set-DraftSmimeFlag `
-        -MessageId $item.Id `
-        -Sign      $parsed.Sign `
-        -Encrypt   $parsed.Encrypt
-    
-    Invoke-UploadAttachments -MessageId $item.Id -FilePaths $resolvedAttachments
 }
 
 function Invoke-SendDraft {

@@ -1520,7 +1520,13 @@ function Set-DraftSmimeFlag {
         [bool]$Encrypt = $false
     )
     if (-not $global:State.SmimeDrafts) { $global:State.SmimeDrafts = @{} }
-    $global:State.SmimeDrafts[$MessageId] = @{ Sign = $Sign; Encrypt = $Encrypt }
+    $existing = @{}
+    if ($global:State.SmimeDrafts.ContainsKey($MessageId)) {
+        $existing = @{} + $global:State.SmimeDrafts[$MessageId]
+    }
+    $existing.Sign = $Sign
+    $existing.Encrypt = $Encrypt
+    $global:State.SmimeDrafts[$MessageId] = $existing
     Save-SmimeDrafts
 }
 
@@ -1533,7 +1539,11 @@ function Get-DraftSmimeFlag {
     param([Parameter(Mandatory)][string]$MessageId)
     if ($global:State.SmimeDrafts -and
         $global:State.SmimeDrafts.ContainsKey($MessageId)) {
-        return $global:State.SmimeDrafts[$MessageId]
+        $entry = $global:State.SmimeDrafts[$MessageId]
+        return @{
+            Sign = [bool]$entry.Sign
+            Encrypt = [bool]$entry.Encrypt
+        }
     }
     return @{ Sign = $false; Encrypt = $false }
 }
@@ -1548,6 +1558,9 @@ function Remove-DraftSmimeFlag {
         $global:State.SmimeDrafts.ContainsKey($MessageId)) {
         $global:State.SmimeDrafts.Remove($MessageId)
         Save-SmimeDrafts
+    }
+    if (Get-Command Remove-LocalEncryptedDraftAssets -ErrorAction SilentlyContinue) {
+        Remove-LocalEncryptedDraftAssets -MessageId $MessageId
     }
 }
 
@@ -1777,34 +1790,108 @@ function Protect-MessageSmime {
         return $false
     }
 
-    # 2. Fetch draft
+    # 2. Fetch draft metadata / local encrypted draft payload
     $draft = Get-Message -MessageId $MessageId
     if (-not $draft) {
         Write-Error-Message "Could not fetch draft for S/MIME"
         return $false
     }
-    $subject  = $draft.subject
-    $toList   = ($draft.toRecipients |
-        ForEach-Object { $_.emailAddress.address }) -join ", "
-    $bodyText = $draft.body.content
-    if ($draft.body.contentType -eq "HTML") {
-        $bodyText = Convert-HtmlToText $bodyText
+
+    $localEncryptedDraft = $null
+    if (Get-Command Get-LocalEncryptedDraftData -ErrorAction SilentlyContinue) {
+        $localEncryptedDraft = Get-LocalEncryptedDraftData -MessageId $MessageId
     }
 
-    # 3. Fetch attachments (embed in MIME before signing)
-    $attachments = @()
-    if ($draft.hasAttachments) {
-        Write-Info "Fetching attachments..."
-        $rawAtts = Get-MessageAttachments -MessageId $MessageId
-        if ($rawAtts) {
-            foreach ($att in $rawAtts) {
-                $full = Get-Attachment `
-                    -MessageId $MessageId -AttachmentId $att.id
-                if ($full -and $full.contentBytes) {
-                    $attachments += @{
-                        Name        = $full.name
-                        ContentType = $full.contentType
-                        Bytes       = [Convert]::FromBase64String($full.contentBytes)
+    $bodyContentType = "text/plain"
+
+    if ($Encrypt -and $localEncryptedDraft) {
+        $subject  = $localEncryptedDraft.Subject
+        $toList   = $localEncryptedDraft.To
+        $bodyText = $localEncryptedDraft.Body
+        $attachments = @()
+
+        if ($bodyText.IndexOf($Config.EmailTemplates.OriginalMessageHeader) -ge 0) {
+            $footerResult = Apply-DraftFooterBeforeQuotedSection `
+                -BodyText $bodyText `
+                -QuotedSectionHeader $Config.EmailTemplates.OriginalMessageHeader
+        } elseif ($bodyText.IndexOf($Config.EmailTemplates.ForwardedMessageHeader) -ge 0) {
+            $footerResult = Apply-DraftFooterBeforeQuotedSection `
+                -BodyText $bodyText `
+                -QuotedSectionHeader $Config.EmailTemplates.ForwardedMessageHeader
+        } else {
+            $footerResult = Apply-DraftFooter $bodyText
+        }
+        $bodyText = $footerResult.Body
+        $bodyContentType = if ($footerResult.ContentType -eq "HTML") {
+            "text/html"
+        } else {
+            "text/plain"
+        }
+
+        foreach ($path in @($localEncryptedDraft.Attachments)) {
+            if (-not (Test-Path -Path $path -PathType Leaf)) {
+                Write-Error-Message "Local encrypted draft attachment missing: $path"
+                return $false
+            }
+
+            $bytes = [System.IO.File]::ReadAllBytes($path)
+            $extension = [System.IO.Path]::GetExtension($path).ToLowerInvariant()
+            $contentType = switch ($extension) {
+                ".jpg"  { "image/jpeg" }
+                ".jpeg" { "image/jpeg" }
+                ".png"  { "image/png" }
+                ".gif"  { "image/gif" }
+                ".pdf"  { "application/pdf" }
+                ".txt"  { "text/plain" }
+                ".html" { "text/html" }
+                ".htm"  { "text/html" }
+                ".doc"  { "application/msword" }
+                ".docx" {
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                }
+                ".xls"  { "application/vnd.ms-excel" }
+                ".xlsx" {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                }
+                ".ppt"  { "application/vnd.ms-powerpoint" }
+                ".pptx" {
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                }
+                default { "application/octet-stream" }
+            }
+
+            $attachments += @{
+                Name        = [System.IO.Path]::GetFileName($path)
+                ContentType = $contentType
+                Bytes       = $bytes
+            }
+        }
+    } else {
+        $subject  = $draft.subject
+        $toList   = ($draft.toRecipients |
+            ForEach-Object { $_.emailAddress.address }) -join ", "
+        $bodyText = $draft.body.content
+        $bodyContentType = if ($draft.body.contentType -eq "HTML") {
+            "text/html"
+        } else {
+            "text/plain"
+        }
+
+        # 3. Fetch attachments (embed in MIME before signing)
+        $attachments = @()
+        if ($draft.hasAttachments) {
+            Write-Info "Fetching attachments..."
+            $rawAtts = Get-MessageAttachments -MessageId $MessageId
+            if ($rawAtts) {
+                foreach ($att in $rawAtts) {
+                    $full = Get-Attachment `
+                        -MessageId $MessageId -AttachmentId $att.id
+                    if ($full -and $full.contentBytes) {
+                        $attachments += @{
+                            Name        = $full.name
+                            ContentType = $full.contentType
+                            Bytes       = [Convert]::FromBase64String($full.contentBytes)
+                        }
                     }
                 }
             }
@@ -1869,7 +1956,9 @@ function Protect-MessageSmime {
     # 5. Build inner MIME
     Write-Info "Building MIME..."
     $innerMime  = Build-SmimeMimeContent `
-        -BodyText $bodyText -Attachments $attachments
+        -BodyText $bodyText `
+        -BodyContentType $bodyContentType `
+        -Attachments $attachments
     [byte[]]$innerBytes = [System.Text.Encoding]::UTF8.GetBytes($innerMime)
 
     # 6. Sign / encrypt

@@ -3,9 +3,9 @@
 psmail supports S/MIME for both incoming signature verification and outgoing
 signing/encryption, using the **Windows Certificate Store** (`certmgr.msc`).
 
-## Inbox: Message List
+## Message List
 
-The inbox list includes two S/MIME indicator columns:
+The message list includes two S/MIME indicator columns:
 
 ```
 #    U E S A  Date              From               Subject
@@ -26,7 +26,7 @@ The index column expands automatically for three- and four-digit message numbers
 
 ## Incoming: Signature Verification
 
-When you open an inbox message, psmail automatically:
+When you open a message in a read-only folder such as Inbox or Sent, psmail automatically:
 
 1. Fetches the raw MIME content from Graph API
 2. Detects `multipart/signed` or `application/pkcs7-mime`
@@ -59,10 +59,16 @@ Encrypt: yes
 Message body...
 ```
 
+If `Encrypt: yes` is set, psmail keeps the draft body and attachment paths
+locally on this computer and stores only a placeholder draft online until you
+send it.
+
 When you run `SEND`, psmail:
 
 1. Picks your signing certificate automatically (matched by email address)
 2. Builds the inner MIME message (body base64-encoded + attachments)
+   - HTML drafts stay HTML, so an active `footer.html` is preserved during
+     signing and encryption instead of being flattened to plain text
 3. Signs with SHA-256 detached signature → `multipart/signed`
    - Body is base64-encoded for transit stability (not quoted-printable)
    - The signed bytes follow RFC 2046 §5.1.1 canonicalisation (trailing
@@ -136,9 +142,9 @@ Submit the CSR to your CA, then import the signed certificate.
 ## Limitations
 
 - **Encryption requires recipient cert** installed under "Other People"
-- **Inbox only**: auto-verification applies to Inbox; Sent/Drafts don't auto-verify
-- **Decryption**: Encrypted received messages show the `E` icon but are not
-  decrypted in the terminal — the mail client decrypts using the local private key
+- **Drafts**: S/MIME auto-verification does not run for Drafts
+- **Decryption**: encrypted messages are only readable when the matching private
+  key is available in the local Windows certificate store
 - **Personal Microsoft accounts** (MSN/Outlook.com): `PUT /$value` is not
   supported; psmail falls back to `POST /me/sendMail` with base64-encoded MIME
 - **Outlook iOS + personal accounts**: S/MIME decryption in Outlook iOS requires
