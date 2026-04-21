@@ -1,5 +1,5 @@
-# Create-HtmlFooter.ps1
-# Helper tool to create account-specific text and HTML footers
+# Create-Footer.ps1
+# Helper tool to create an account-specific footer in HTML or plain text
 
 param(
     [Parameter(Mandatory)]
@@ -16,7 +16,7 @@ param(
     [string]$Signoff = "Mit freundlichen Grüßen,",
     [string]$LogoPath,
     [string]$AccountKey,
-    [switch]$WriteTextFooter
+    [switch]$TextOnly
 )
 
 function Resolve-TargetFolder {
@@ -203,37 +203,40 @@ function Build-HtmlFooter {
 }
 
 Write-Host ""
-Write-Host "Creating account-specific HTML footer..." -ForegroundColor Cyan
+Write-Host "Creating account-specific footer..." -ForegroundColor Cyan
 
 $targetFolder = Resolve-TargetFolder -ExplicitAccountKey $AccountKey
 if (-not (Test-Path $targetFolder)) {
     New-Item -Path $targetFolder -ItemType Directory -Force | Out-Null
 }
 
-$htmlFooter = Build-HtmlFooter
-
 $textPath = Join-Path $targetFolder "footer.txt"
 $htmlPath = Join-Path $targetFolder "footer.html"
 
-$htmlFooter | Out-File -FilePath $htmlPath -Encoding utf8 -NoNewline
-
-if ($WriteTextFooter) {
+if ($TextOnly) {
     $textFooter = Build-TextFooter
     $textFooter | Out-File -FilePath $textPath -Encoding utf8 -NoNewline
+    if (Test-Path $htmlPath) {
+        Remove-Item -Path $htmlPath -Force -ErrorAction SilentlyContinue
+    }
+} else {
+    $htmlFooter = Build-HtmlFooter
+    $htmlFooter | Out-File -FilePath $htmlPath -Encoding utf8 -NoNewline
 }
 
 Write-Host ""
 Write-Host "Created:" -ForegroundColor Green
-Write-Host "  $htmlPath" -ForegroundColor Green
-if ($WriteTextFooter) {
+if ($TextOnly) {
     Write-Host "  $textPath" -ForegroundColor Green
+} else {
+    Write-Host "  $htmlPath" -ForegroundColor Green
 }
 Write-Host ""
-Write-Host "psmail will use footer.html whenever it exists for this account." -ForegroundColor Cyan
-if ($WriteTextFooter) {
-    Write-Host "footer.txt was also written as an optional plain-text fallback file." -ForegroundColor DarkGray
+if ($TextOnly) {
+    Write-Host "psmail will use footer.txt for this account as long as no footer.html exists." -ForegroundColor Cyan
+    Write-Host "An existing footer.html was removed so the text footer is actually used." -ForegroundColor DarkGray
 } else {
-    Write-Host "Use -WriteTextFooter if you also want a separate plain-text footer file." -ForegroundColor DarkGray
+    Write-Host "psmail will use footer.html whenever it exists for this account." -ForegroundColor Cyan
+    Write-Host "Use -TextOnly if you want to generate footer.txt instead." -ForegroundColor DarkGray
 }
-Write-Host "Delete or rename footer.html in this account folder to stop HTML footer usage." -ForegroundColor DarkGray
 Write-Host ""

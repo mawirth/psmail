@@ -39,13 +39,14 @@ HTML and the footer is appended. Replies and forwards also keep the quoted or
 forwarded original block as HTML line breaks, so header lines and paragraph
 breaks stay readable.
 
-`Create-HtmlFooter.ps1` writes `footer.html` by default. A matching
-`footer.txt` is only created when you explicitly pass `-WriteTextFooter`.
+`Create-Footer.ps1` writes `footer.html` by default. With `-TextOnly`, it
+writes `footer.txt` instead and removes an existing `footer.html` for that
+account so the text footer is actually used.
 
 Create one with the included tool:
 
 ```powershell
-.\tools\Create-HtmlFooter.ps1 `
+.\tools\Create-Footer.ps1 `
     -Name       "Your Name" `
     -Email      "you@example.com" `
     -Mobile     "+49 170 1234567" `
@@ -56,7 +57,7 @@ Create one with the included tool:
 If you have multiple account folders, specify the target account explicitly:
 
 ```powershell
-.\tools\Create-HtmlFooter.ps1 `
+.\tools\Create-Footer.ps1 `
     -Name "Your Name" `
     -AccountKey "max@example.com__consumers"
 ```
@@ -79,8 +80,14 @@ Switch back to plain text:
 Remove-Item data\accounts\<account-key>\footer.html
 ```
 
-If you previously created `footer.txt` with `-WriteTextFooter`, psmail can then
-fall back to that plain-text footer.
+For a plain-text footer instead of HTML:
+
+```powershell
+.\tools\Create-Footer.ps1 `
+    -Name "Your Name" `
+    -AccountKey "max@example.com__consumers" `
+    -TextOnly
+```
 
 See `tools/README.md` for full options.
 

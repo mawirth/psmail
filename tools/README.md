@@ -2,7 +2,7 @@
 
 ## Overview
 
-`Create-HtmlFooter.ps1` creates an account-specific HTML footer:
+`Create-Footer.ps1` creates an account-specific footer file:
 
 ```text
 data/accounts/<account-key>/footer.html
@@ -13,9 +13,11 @@ to hand-edit the footer files. The current focus is a clean contact footer:
 name, signoff, email, phone/mobile, website, address lines, and an optional
 certification link.
 
+By default the tool writes `footer.html`.
+With `-TextOnly`, it writes `footer.txt` instead and removes an existing
+`footer.html` in that account folder so the text footer is actually used.
+
 If `footer.html` exists, psmail sends the draft as HTML and appends that footer.
-`footer.txt` is optional and only written when you explicitly request it with
-`-WriteTextFooter`.
 
 For replies and forwards, psmail keeps the quoted original section as HTML with
 preserved line breaks, so `--- Original Message ---` / `--- Forwarded Message ---`
@@ -39,7 +41,7 @@ possible.
 ## Usage
 
 ```powershell
-.\tools\Create-HtmlFooter.ps1 `
+.\tools\Create-Footer.ps1 `
     -Name "Martin Wirth" `
     -Email "max@example.com" `
     -Mobile "+49 170 1234567" `
@@ -63,35 +65,35 @@ optional. If multiple account folders exist, pass `-AccountKey`.
 - `-CertificationUrl` optional: clickable certification link
 - `-LogoPath` optional: inline image as data URI
 - `-AccountKey` optional: target account folder name
-- `-WriteTextFooter` optional: also write `footer.txt`
+- `-TextOnly` optional: write `footer.txt` instead of `footer.html`
 
 ## Examples
 
 Minimal private footer:
 
 ```powershell
-.\tools\Create-HtmlFooter.ps1 `
+.\tools\Create-Footer.ps1 `
     -Name "Martin Wirth" `
     -Email "max@example.com" `
     -Mobile "+49 170 1234567" `
     -AccountKey "max@example.com__consumers"
 ```
 
-Same footer plus a plain-text fallback file:
+Plain-text footer instead of HTML:
 
 ```powershell
-.\tools\Create-HtmlFooter.ps1 `
+.\tools\Create-Footer.ps1 `
     -Name "Martin Wirth" `
     -Email "max@example.com" `
     -Mobile "+49 170 1234567" `
     -AccountKey "max@example.com__consumers" `
-    -WriteTextFooter
+    -TextOnly
 ```
 
 Richer footer with optional fields:
 
 ```powershell
-.\tools\Create-HtmlFooter.ps1 `
+.\tools\Create-Footer.ps1 `
     -Name "Martin Wirth" `
     -Title "Projektleitung" `
     -Email "max@example.com" `
@@ -105,7 +107,7 @@ Richer footer with optional fields:
 Address lines:
 
 ```powershell
-.\tools\Create-HtmlFooter.ps1 `
+.\tools\Create-Footer.ps1 `
     -Name "Martin Wirth" `
     -AddressLines "Musterstrasse 1","78462 Konstanz" `
     -AccountKey "max@example.com__consumers"
@@ -125,5 +127,4 @@ Address lines:
 Remove-Item data\accounts\<account-key>\footer.html
 ```
 
-If you created `footer.txt` with `-WriteTextFooter`, psmail can then fall back
-to that plain-text footer.
+If you want a text footer instead, run the tool with `-TextOnly`.

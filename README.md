@@ -39,6 +39,42 @@ pwsh psmail.ps1
 On first run a browser opens for Microsoft account login. Credentials are
 cached by Windows WAM — subsequent starts connect automatically.
 
+## Minimal Walkthrough
+
+1. Install PowerShell 7 and a text editor if needed. For Neovim on Windows, for example:
+
+```powershell
+winget install Neovim.Neovim
+```
+
+2. Create a footer for your account after the first successful login:
+
+```powershell
+.\tools\Create-Footer.ps1 `
+    -Name "Martin Wirth" `
+    -Email "max@example.com" `
+    -Mobile "+49 170 1234567" `
+    -AccountKey "max@example.com__consumers"
+```
+
+3. Start psmail:
+
+```powershell
+pwsh .\psmail.ps1
+```
+
+4. Press `D` to switch to Drafts, then run `NEW`.
+
+5. Fill in `To:` and `Subject:`, write your message below `---`, then save and close the editor with `:wq`.
+
+6. Back in psmail, send the first draft with:
+
+```text
+SEND 1
+```
+
+That is the standard flow. The rest of the commands and optional features are documented below and in `docs/`.
+
 ## Quick Start
 
 ```powershell
@@ -102,7 +138,7 @@ Opening messages in `Sent` uses the same S/MIME verification/decryption path as 
 | [docs/commands.md](docs/commands.md) | Full command reference, bulk ops, filtering, composition, attachments |
 | [docs/smime.md](docs/smime.md) | S/MIME verification, signing, encryption, certificate setup |
 | [docs/configuration.md](docs/configuration.md) | Editor, colors, account-specific footer, authentication, pagination, local state files |
-| [tools/README.md](tools/README.md) | Account-specific HTML footer with logo |
+| [tools/README.md](tools/README.md) | Account-specific footer tool for HTML or plain text |
 | [NEXTSTEPS.md](NEXTSTEPS.md) | Planned ideas and candidate scope for the next version |
 
 ## File Structure
@@ -111,7 +147,7 @@ Opening messages in `Sent` uses the same S/MIME verification/decryption path as 
 psmail.ps1        # entry point
 src/              # modules (config, graph, ui, drafts, smime, …)
 docs/             # detailed documentation
-tools/            # Create-HtmlFooter.ps1
+tools/            # Create-Footer.ps1
 data/             # accounts/<account-key>/footer*.txt/html + local helper state
                   # root-level footer files are legacy/manual only
 attachments/      # downloaded attachments (gitignored)
