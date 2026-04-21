@@ -66,7 +66,7 @@ pwsh psmail.ps1 -Version # show version
 
 ## Message List (Inbox)
 
-```
+```text
 #    U E S A  Date              From               Subject
 1    *   ✔ *  2026-01-22 12:30  alice@example.com  Signed mail
 27      E      2026-01-22 11:10  bob@example.com    Encrypted
@@ -74,7 +74,15 @@ pwsh psmail.ps1 -Version # show version
 1004         2026-01-22 09:00  carl@example.com   Normal mail
 ```
 
-`U` = unread · `E` = encrypted · `S` = signing status (✔ trusted / ~ untrusted / ✖ invalid) · `A` = real user attachment
+Column meanings:
+
+| Column | Meaning |
+|--------|---------|
+| `#` | Message index |
+| `U` | Unread marker (`*`) |
+| `E` | Encrypted message (`E`) |
+| `S` | Signing status: `✔` trusted, `~` untrusted, `✖` invalid |
+| `A` | Real user attachment (`*`) |
 
 The `#` column expands automatically when message indexes become three or four digits so the remaining columns stay aligned.
 
