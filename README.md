@@ -24,7 +24,7 @@ using **Microsoft Graph API**.
 ## Requirements
 
 - **PowerShell 7+** (`pwsh`)
-- **Neovim** (`nvim`) in PATH
+- **A text editor in PATH** — `nvim` is the default, but `notepad`, `code`, `vim`, or another editor can be configured
 - **Microsoft account** (Outlook.com, Hotmail.com, Microsoft 365)
 - Microsoft.Graph.Authentication module (auto-installed on first run)
 
