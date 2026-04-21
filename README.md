@@ -66,13 +66,14 @@ pwsh psmail.ps1 -Version # show version
 
 ## Message List (Inbox)
 
-```text
-#    U E S A  Date              From               Subject
-1    *   ✔ *  2026-01-22 12:30  alice@example.com  Signed mail
-27      E      2026-01-22 11:10  bob@example.com    Encrypted
-103        ~    2026-01-22 10:40  eve@example.com    Untrusted sig
-1004         2026-01-22 09:00  carl@example.com   Normal mail
-```
+Example inbox view:
+
+| # | U | E | S | A | Date | From | Subject |
+|---|---|---|---|---|------|------|---------|
+| 1 | `*` |  | `✔` | `*` | `2026-01-22 12:30` | `alice@example.com` | Signed mail |
+| 27 |  | `E` |  |  | `2026-01-22 11:10` | `bob@example.com` | Encrypted |
+| 103 |  |  | `~` |  | `2026-01-22 10:40` | `eve@example.com` | Untrusted sig |
+| 1004 |  |  |  |  | `2026-01-22 09:00` | `carl@example.com` | Normal mail |
 
 Column meanings:
 
