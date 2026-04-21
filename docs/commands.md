@@ -21,7 +21,7 @@
 | `L` | List / refresh current folder |
 | `R <#>` | Read message by number |
 | `M` | Load next page of messages |
-| `FILTER <text>` | Filter messages (searches From, Subject, Body) |
+| `FILTER <text>` | Filter messages (server-side search in From, Subject, Body) |
 | `CLEAR` | Remove active filter |
 
 ## Folder-specific Commands
@@ -93,6 +93,8 @@ All bulk operations show a preview and require confirmation.
 > FILTER john
 ```
 Filters the current folder by sender (name/address), subject, or body.
+Uses Microsoft Graph server-side search first, so filtering does not need to
+download full message bodies in the normal case.
 The filter indicator `[Filter active: 'john']` appears above the list.
 
 ```

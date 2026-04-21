@@ -12,7 +12,7 @@ using **Microsoft Graph API**.
 - **Reply, Forward, Redraft** — with quoted text and attachment copy
 - **Attachments** — upload when composing, save received files
 - **Contact search** — search email history, copy address to clipboard
-- **Filtering** — search by sender, subject, or body across all folders
+- **Filtering** — server-side search by sender, subject, or body across all folders
 - **S/MIME** — verify incoming signatures, decrypt incoming encrypted mail, sign and encrypt outgoing mail
 - **HTML cleanup** — converts HTML emails to readable plain text
 - **Folder management** — Inbox, Drafts, Sent, Deleted, Junk
@@ -55,7 +55,7 @@ pwsh psmail.ps1 -Version # show version
 | `E <#>` | Edit draft |
 | `SEND <#>` | Send draft |
 | `REPLY` / `REPLYALL` / `FORWARD` | When viewing a message |
-| `FILTER <text>` | Filter by sender/subject/body |
+| `FILTER <text>` | Server-side filter by sender/subject/body |
 | `CLEAR` | Remove filter |
 | `CONTACTS` | Search contacts |
 | `SMIME` | Show S/MIME certificates |

@@ -93,7 +93,7 @@ src/
 #### Graph API (graph.ps1)
 - `Invoke-GraphRequest` - Wrapper with error handling
 - `Get-FolderMessages` - Fetch messages with pagination
-- `Get-FilteredMessages` - Client-side filtering (subject, from, body)
+- `Get-FilteredMessages` - Server-side Graph search for filtered message lists
 - `Remove-Message` - **Important**: Returns `@{ success = $true }` on HTTP 204 (not null)
 - `Move-Message` - Move between folders
 - `Send-GraphMessage` - Send draft

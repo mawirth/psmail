@@ -13,21 +13,40 @@ function Invoke-GraphRequest {
         [Parameter(Mandatory)]
         [string]$Uri,
         
-        [object]$Body = $null
+        [object]$Body = $null,
+
+        [hashtable]$Headers = $null
     )
     
     try {
         if ($Body) {
-            return Invoke-MgGraphRequest `
-                -Method $Method `
-                -Uri $Uri `
-                -Body $Body `
-                -ErrorAction Stop
+            if ($Headers) {
+                return Invoke-MgGraphRequest `
+                    -Method $Method `
+                    -Uri $Uri `
+                    -Body $Body `
+                    -Headers $Headers `
+                    -ErrorAction Stop
+            } else {
+                return Invoke-MgGraphRequest `
+                    -Method $Method `
+                    -Uri $Uri `
+                    -Body $Body `
+                    -ErrorAction Stop
+            }
         } else {
-            return Invoke-MgGraphRequest `
-                -Method $Method `
-                -Uri $Uri `
-                -ErrorAction Stop
+            if ($Headers) {
+                return Invoke-MgGraphRequest `
+                    -Method $Method `
+                    -Uri $Uri `
+                    -Headers $Headers `
+                    -ErrorAction Stop
+            } else {
+                return Invoke-MgGraphRequest `
+                    -Method $Method `
+                    -Uri $Uri `
+                    -ErrorAction Stop
+            }
         }
     } catch {
         Write-Error-Message ("Graph API error: {0}" `
@@ -58,11 +77,7 @@ function Get-FolderMessages {
     )
     
     if ($NextLink) {
-        # Use next link for pagination
-        # Modify NextLink to use custom $top if provided
-        if ($NextLink -match '\$top=\d+') {
-            $NextLink = $NextLink -replace '\$top=\d+', "`$top=$Top"
-        }
+        # Reuse Graph paging URL as-is.
         $response = Invoke-GraphRequest -Method GET -Uri $NextLink
     } else {
         # Build new query
@@ -306,8 +321,7 @@ function Get-Attachment {
 function Get-FilteredMessages {
     <#
     .SYNOPSIS
-    Get messages matching filter criteria (from, subject, body)
-    Fetches messages in batches until target count is reached
+    Get messages matching filter criteria via Microsoft Graph server-side search
     #>
     param(
         [Parameter(Mandatory)]
@@ -320,88 +334,24 @@ function Get-FilteredMessages {
         
         [string]$NextLink = $null
     )
-    
-    $filteredMessages = @()
-    $currentNextLink = $NextLink
-    $batchSize = $Config.FilterBatchSize
-    $maxSearch = $Config.FilterMaxSearch
-    $messagesSearched = 0
-    
-    # Convert filter text to lowercase
-    # for case-insensitive matching
-    $filterLower = $FilterText.ToLower()
-    
-    while ($filteredMessages.Count -lt $TargetCount `
-        -and $messagesSearched -lt $maxSearch) {
-        # Fetch next batch with body content included
-        $selectFields = "id,subject,from,toRecipients," +
-            "receivedDateTime,isRead,hasAttachments,body"
-        $result = Get-FolderMessages `
-            -FolderId $FolderId `
-            -Top $batchSize `
-            -Select $selectFields `
-            -NextLink $currentNextLink
-        
-        if (-not $result -or -not $result.Messages `
-            -or $result.Messages.Count -eq 0) {
-            # No more messages available
-            break
-        }
-        
-        # Track how many messages we've searched through
-        $messagesSearched += $result.Messages.Count
-        
-        # Filter messages
-        foreach ($msg in $result.Messages) {
-            $matches = $false
-            
-            # Check subject
-            if ($msg.subject `
-                -and $msg.subject.ToLower().Contains($filterLower)) {
-                $matches = $true
-            }
-            
-            # Check from address
-            if (-not $matches -and $msg.from `
-                -and $msg.from.emailAddress) {
-                $fromAddr = $msg.from.emailAddress.address
-                $fromName = $msg.from.emailAddress.name
-                $addrMatch = $fromAddr `
-                    -and $fromAddr.ToLower().Contains($filterLower)
-                $nameMatch = $fromName `
-                    -and $fromName.ToLower().Contains($filterLower)
-                if ($addrMatch -or $nameMatch) {
-                    $matches = $true
-                }
-            }
-            
-            # Check body content
-            if (-not $matches -and $msg.body -and $msg.body.content) {
-                if ($msg.body.content.ToLower().Contains($filterLower)) {
-                    $matches = $true
-                }
-            }
-            
-            if ($matches) {
-                $filteredMessages += $msg
-                # Stop if we've reached target count
-                if ($filteredMessages.Count -ge $TargetCount) {
-                    break
-                }
-            }
-        }
-        
-        # Update next link for pagination
-        $currentNextLink = $result.NextLink
-        
-        # Break if no more messages
-        if (-not $currentNextLink) {
-            break
-        }
+
+    $selectFields = "id,subject,from,toRecipients," +
+        "receivedDateTime,isRead,hasAttachments"
+
+    if ($NextLink) {
+        $response = Invoke-GraphRequest -Method GET -Uri $NextLink
+    } else {
+        $quotedSearch = '"' + ($FilterText -replace '"', '""') + '"'
+        $encodedSearch = [uri]::EscapeDataString($quotedSearch)
+        $uri = "/v1.0/me/mailFolders/$FolderId/messages" +
+            "?`$top=$TargetCount" +
+            "&`$select=$selectFields" +
+            "&`$search=$encodedSearch"
+        $response = Invoke-GraphRequest -Method GET -Uri $uri
     }
-    
+
     return @{
-        Messages = $filteredMessages
-        NextLink = $currentNextLink
+        Messages = if ($response) { $response.value } else { $null }
+        NextLink = if ($response) { $response.'@odata.nextLink' } else { $null }
     }
 }

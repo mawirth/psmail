@@ -40,12 +40,6 @@ $script:Config = @{
     MinPageSize = 1
     MaxPageSize = 50
     
-    # Filter search limits
-    # Maximum number of messages to search per filter operation
-    # to prevent excessive downloads in large mailboxes
-    FilterMaxSearch = 200  # Search at most 200 messages per filter/more
-    FilterBatchSize = 50   # Fetch 50 messages per API call
-    
     # Editor path
     Editor = "nvim"
     
