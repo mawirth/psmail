@@ -61,6 +61,8 @@ function Initialize-State {
         LastQuery      = $null
         OpenMessageId  = $null
         Filter         = $null
+        StatusMessage  = $null
+        StatusColor    = $null
         # S/MIME: per-draft flags, keyed by message ID.
         # Persisted to SmimeDraftsPath so flags survive session restarts.
         SmimeDrafts    = $smimeDrafts
@@ -185,4 +187,19 @@ function Clear-Filter {
 
 function Get-Filter {
     return $global:State.Filter
+}
+
+function Set-StatusMessage {
+    param(
+        [string]$Message,
+        [string]$Color = "Info"
+    )
+
+    $global:State.StatusMessage = $Message
+    $global:State.StatusColor = $Color
+}
+
+function Clear-StatusMessage {
+    $global:State.StatusMessage = $null
+    $global:State.StatusColor = $null
 }

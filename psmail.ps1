@@ -328,24 +328,26 @@ while ($true) {
             # Check if replacing existing filter
             $currentFilter = Get-Filter
             if ($currentFilter) {
-                Write-Info "Replacing filter '$currentFilter' " +
-                    "with '$arg'"
+                Set-StatusMessage -Message ("Filter changed: '{0}' -> '{1}'" -f $currentFilter, $arg) -Color "Success"
+            } else {
+                Set-StatusMessage -Message "Filter set: '$arg'" -Color "Success"
             }
             
             # Set new filter (this resets items automatically)
             Set-Filter -FilterText $arg
-            Write-Success "Filter set: '$arg'"
             Invoke-ListMessages
         }
         "CLEAR" {
             # Clear active filter
             $currentFilter = Get-Filter
             if (-not $currentFilter) {
-                Write-Info "No filter is active"
+                Set-StatusMessage -Message "No filter is active" -Color "Info"
+                Show-CurrentView
+                Show-MessageList
                 continue
             }
             Clear-Filter
-            Write-Success "Filter cleared"
+            Set-StatusMessage -Message "Filter cleared" -Color "Success"
             Invoke-ListMessages
         }
         default {

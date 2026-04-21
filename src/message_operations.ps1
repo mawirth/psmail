@@ -180,8 +180,7 @@ function Invoke-BulkMessageOperation {
         }
     }
     
-    # Show success message
-    Write-Success ($SuccessMessage -f $successCount)
+    Set-StatusMessage -Message ($SuccessMessage -f $successCount) -Color "Success"
     
     # Refresh list
     if ($processedIds.Count -gt 0) {

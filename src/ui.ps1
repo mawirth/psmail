@@ -303,6 +303,9 @@ function Show-MessageList {
     .SYNOPSIS
     Display message list with formatting
     #>
+    param(
+        [int]$StartIndex = 0
+    )
     
     $layout = Get-ListLayoutInfo
 
@@ -319,7 +322,12 @@ function Show-MessageList {
     # Header line
     Render-MessageListHeader -View $view -ColumnWidths $columnWidths
 
-    $displayItems = @($global:State.Items | Select-Object -First $layout.MessageRows)
+    if ($StartIndex -lt 0) {
+        $StartIndex = 0
+    }
+
+    $displayItems = @($global:State.Items |
+        Select-Object -Skip $StartIndex -First $layout.MessageRows)
     foreach ($item in $displayItems) {
         Render-MessageRow -Item $item -View $view -ColumnWidths $columnWidths
     }
@@ -337,7 +345,16 @@ function Show-MessageList {
     }
 
     # Fixed pagination/status slot to keep the layout height stable
-    if ($global:State.NextLink) {
+    if ($global:State.StatusMessage) {
+        $statusColor = if ($global:State.StatusColor) {
+            $global:State.StatusColor
+        } else {
+            "Info"
+        }
+        Write-Host $global:State.StatusMessage `
+            -ForegroundColor $Config.Colors.$statusColor
+        Clear-StatusMessage
+    } elseif ($global:State.NextLink) {
         Write-Host "[M] More messages available" `
             -ForegroundColor $Config.Colors.Info
     } else {

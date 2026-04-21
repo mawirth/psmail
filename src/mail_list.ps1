@@ -119,12 +119,6 @@ function Invoke-ListMessages {
     # Calculate optimal page size based on window height
     $pageSize = Get-OptimalPageSize
     
-    # Check if filter is active
-    $filterText = Get-Filter
-    if ($filterText) {
-        Write-Host "Applying filter: '$filterText'..." -ForegroundColor $Config.Colors.LoadingMore
-    }
-    
     # Get messages (automatically handles filter vs normal)
     $result = Get-Messages -Count $pageSize
     
@@ -152,18 +146,14 @@ function Invoke-ListMore {
     Load next page of messages
     #>
     
-    if (-not $global:State.NextLink) {
-        Write-Info "No more messages available"
-        return
-    }
-    
-    # Calculate how many more messages to load
     $pageSize = Get-OptimalPageSize
-    
-    # Check if filter is active
-    $filterText = Get-Filter
-    if ($filterText) {
-        Write-Host "Loading more filtered messages..." -ForegroundColor $Config.Colors.LoadingMore
+
+    if (-not $global:State.NextLink) {
+        Set-StatusMessage -Message "No more messages available" -Color "Info"
+        $lastPageStart = [Math]::Max(0, $global:State.Items.Count - $pageSize)
+        Show-CurrentView
+        Show-MessageList -StartIndex $lastPageStart
+        return
     }
     
     # Get messages (automatically handles filter vs normal)
@@ -175,40 +165,25 @@ function Invoke-ListMore {
     }
     
     if ($result.Messages.Count -eq 0) {
-        Write-Info "No more messages available"
+        $global:State.NextLink = $null
+        Set-StatusMessage -Message "No more messages available" -Color "Info"
+        $lastPageStart = [Math]::Max(0, $global:State.Items.Count - $pageSize)
+        Show-CurrentView
+        Show-MessageList -StartIndex $lastPageStart
         return
     }
     
+    $previousCount = $global:State.Items.Count
+
     # Update next link
     $global:State.NextLink = $result.NextLink
     
     # Add messages to state
     $newItems = @(Add-MessagesToState -Messages $result.Messages)
-    
-    # Display only new messages
-    Write-Host ""
-    Write-Host "Loaded $($newItems.Count) more message(s):" -ForegroundColor $Config.Colors.LoadingMore
-    Write-Host ""
-    
-    # Show header for new messages
-    $view = $global:State.View
-    $columnWidths = Get-ColumnWidths -View $view
-    
-    Render-MessageListHeader -View $view -ColumnWidths $columnWidths
-    
-    # Display only new items
-    foreach ($item in $newItems) {
-        Render-MessageRow -Item $item -View $view -ColumnWidths $columnWidths
-    }
-    
-    # Show pagination info if more available
-    if ($global:State.NextLink) {
-        Write-Host ""
-        Write-Host "[M] More messages available" -ForegroundColor $Config.Colors.Info
-    }
-    
-    Write-Host ""
-    Write-Host "Total: $($global:State.Items.Count) message(s) loaded" -ForegroundColor $Config.Colors.Info
+
+    Set-StatusMessage -Message "Loaded $($newItems.Count) more message(s)" -Color "Success"
+    Show-CurrentView
+    Show-MessageList -StartIndex $previousCount
 }
 
 function Invoke-RefreshMessageList {
@@ -261,15 +236,17 @@ function Invoke-RefreshMessageList {
         }
     }
     
+    if ($loadedCount -gt 0) {
+        $statusMessage = "Loaded $loadedCount new message(s)"
+        if ($global:State.StatusMessage) {
+            $statusMessage = "$($global:State.StatusMessage) | $statusMessage"
+        }
+        Set-StatusMessage -Message $statusMessage -Color "Success"
+    }
+
     # Display the refreshed message list
     Show-CurrentView
     Show-MessageList
-    
-    # Show load message after list if we loaded new messages
-    if ($loadedCount -gt 0) {
-        Write-Host ""
-        Write-Host "Loaded $loadedCount new message(s)" -ForegroundColor $Config.Colors.Success
-    }
 }
 
 function Switch-ToFolder {
