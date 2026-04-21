@@ -41,6 +41,7 @@ function Connect-GraphMail {
         $ctx     = Get-MgContext
         $email   = Get-CurrentUserEmail
         $tenantInfo = if ($ctx.TenantId) { $ctx.TenantId } else { "consumers" }
+        Set-AccountStoragePaths -Email $email -TenantId $tenantInfo
         Write-Info ("Account: {0}  Tenant: {1}" -f $email, $tenantInfo)
         
         return $true
@@ -76,6 +77,7 @@ function Get-CurrentUserEmail {
 function Disconnect-GraphMail {
     try {
         Disconnect-MgGraph -ErrorAction SilentlyContinue
+        $Config.CurrentAccount = $null
         Write-Info "Disconnected from Microsoft Graph"
     } catch {
         # Ignore disconnect errors

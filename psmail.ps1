@@ -54,9 +54,6 @@ if ($Version) {
 . "$ScriptRoot\src\smime.ps1"
 . "$ScriptRoot\src\contacts.ps1"
 
-# Initialize state
-Initialize-State
-
 # Connect to Graph
 Write-Host ""
 Write-Host "=== psmail - PowerShell Mail Client ===" `
@@ -67,6 +64,9 @@ if (-not (Connect-GraphMail)) {
     Write-Error-Message "Failed to connect. Exiting."
     exit 1
 }
+
+# Initialize state after login so local cache/draft files are account-specific
+Initialize-State
 
 # Initial list
 Invoke-ListMessages
@@ -110,7 +110,7 @@ while ($true) {
         "LOGOUT" {
             Write-Host ""
             Write-Info "Disconnecting and clearing session..."
-            Disconnect-MgGraph -ErrorAction SilentlyContinue
+            Disconnect-GraphMail
             Write-Success "Logged out successfully"
             exit 0
         }

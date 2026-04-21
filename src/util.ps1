@@ -301,3 +301,44 @@ function Format-WordWrap {
     
     return $result
 }
+
+function Format-QuotedMessageBlock {
+    <#
+    .SYNOPSIS
+    Normalize reply/forward quoted blocks so message headers stay multiline
+    even when upstream HTML-to-text conversion collapsed whitespace.
+    #>
+    param(
+        [string]$Text,
+        [Parameter(Mandatory)]
+        [string]$HeaderMarker
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return ""
+    }
+
+    $normalized = $Text -replace "`r`n", "`n"
+    $markerPattern = [regex]::Escape($HeaderMarker)
+
+    # Only normalize when the header marker and metadata were collapsed onto
+    # one line. Do not touch already multiline blocks.
+    $collapsedHeaderPattern = "$markerPattern[^\n]*\s+From:\s+"
+    if ($normalized -match $collapsedHeaderPattern) {
+        $normalized = $normalized -replace "$markerPattern\s+From:\s*", "$HeaderMarker`nFrom: "
+        $normalized = $normalized -replace "\s+Date:\s*", "`nDate: "
+        $normalized = $normalized -replace "\s+Subject:\s*", "`nSubject: "
+        $normalized = $normalized -replace "\s+To:\s*", "`nTo: "
+    }
+
+    # Add one blank line between metadata header and quoted body.
+    if ($normalized -match "(`n(?:From|Date|Subject|To):[^\n]*)\s+>\s*") {
+        $normalized = [regex]::Replace(
+            $normalized,
+            "(`n(?:From|Date|Subject|To):[^\n]*)\s+>\s*",
+            { param($m) $m.Groups[1].Value + "`n`n> " }
+        )
+    }
+
+    return $normalized
+}

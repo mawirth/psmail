@@ -131,7 +131,8 @@ Encrypt: no
 3. Fill in the fields, write the body below `---`
 4. Save and quit: `:wq`
 
-The footer from `data/footer.txt` (or `footer.html`) is appended automatically.
+The footer from the active account folder
+(`data/accounts/<account-key>/footer.txt` or `footer.html`) is appended automatically.
 Attachments are validated and uploaded after saving.
 
 ### Editing a Draft

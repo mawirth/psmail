@@ -386,6 +386,26 @@ function Apply-DraftFooter {
     return @{ ContentType = "Text"; Body = $BodyText }
 }
 
+function Convert-TextToHtmlFragment {
+    <#
+    .SYNOPSIS
+    Convert plain text to an HTML fragment while preserving line breaks.
+    #>
+    param([string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) {
+        return ""
+    }
+
+    $normalized = $Text -replace "`r`n", "`n"
+    $normalized = $normalized -replace "`r", "`n"
+
+    $html = [System.Net.WebUtility]::HtmlEncode($normalized)
+    $html = $html -replace "`n", "<br>`n"
+
+    return $html
+}
+
 function Apply-DraftFooterBeforeQuotedSection {
     <#
     .SYNOPSIS
@@ -411,9 +431,18 @@ function Apply-DraftFooterBeforeQuotedSection {
 
     $footerResult = Apply-DraftFooter $introBody
     $combinedBody = if ([string]::IsNullOrWhiteSpace($footerResult.Body)) {
-        $quotedBody
+        if ($footerResult.ContentType -eq "HTML") {
+            "<div style=`"margin-top: 18px;`">$(Convert-TextToHtmlFragment $quotedBody)</div>"
+        } else {
+            $quotedBody
+        }
     } else {
-        $footerResult.Body + "`n`n" + $quotedBody
+        if ($footerResult.ContentType -eq "HTML") {
+            $footerResult.Body + "`n" +
+                "<div style=`"margin-top: 18px;`">$(Convert-TextToHtmlFragment $quotedBody)</div>"
+        } else {
+            $footerResult.Body + "`n`n" + $quotedBody
+        }
     }
 
     return @{
@@ -459,10 +488,9 @@ function Get-Footer {
     #>
     
     # Check for HTML footer first
-    $htmlFooterPath = Join-Path (Split-Path $Config.FooterPath) "footer.html"
-    if (Test-Path $htmlFooterPath) {
+    if (Test-Path $Config.HtmlFooterPath) {
         try {
-            $content = Get-Content -Path $htmlFooterPath -Raw -ErrorAction Stop
+            $content = Get-Content -Path $Config.HtmlFooterPath -Raw -ErrorAction Stop
             return @{
                 Type = "HTML"
                 Content = $content

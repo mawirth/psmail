@@ -17,6 +17,7 @@ using **Microsoft Graph API**.
 - **HTML cleanup** — converts HTML emails to readable plain text
 - **Folder management** — Inbox, Drafts, Sent, Deleted, Junk
 - **Stable viewport filling** — message lists fill exactly one screen without clearing the console
+- **Account-specific local files** — footer and S/MIME helper state are separated per signed-in account
 - **Local metadata only** — no local mailbox sync; only small local state/cache files
 
 ## Requirements
@@ -97,8 +98,8 @@ Encrypted and signed messages can show both markers at once: `E` for encryption 
 |----------|----------|
 | [docs/commands.md](docs/commands.md) | Full command reference, bulk ops, filtering, composition, attachments |
 | [docs/smime.md](docs/smime.md) | S/MIME verification, signing, encryption, certificate setup |
-| [docs/configuration.md](docs/configuration.md) | Editor, colors, footer, authentication, pagination, local state files |
-| [tools/README.md](tools/README.md) | HTML footer with logo |
+| [docs/configuration.md](docs/configuration.md) | Editor, colors, account-specific footer, authentication, pagination, local state files |
+| [tools/README.md](tools/README.md) | Account-specific HTML footer with logo |
 | [NEXTSTEPS.md](NEXTSTEPS.md) | Planned ideas and candidate scope for the next version |
 
 ## File Structure
@@ -108,8 +109,8 @@ psmail.ps1        # entry point
 src/              # modules (config, graph, ui, drafts, smime, …)
 docs/             # detailed documentation
 tools/            # Create-HtmlFooter.ps1
-data/             # footer.txt / footer.html (gitignored)
-                  # smime-drafts.json / smime-cache.json / local helper state
+data/             # accounts/<account-key>/footer*.txt/html + local helper state
+                  # root-level footer files are legacy/manual only
 attachments/      # downloaded attachments (gitignored)
 cert/             # certificate files (gitignored)
 ```

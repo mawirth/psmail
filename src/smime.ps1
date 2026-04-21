@@ -693,7 +693,7 @@ function Write-SmimeDebugDump {
     )
 
     try {
-        $debugPath = Join-Path $PSScriptRoot "..\data\smime-debug.txt"
+        $debugPath = $Config.SmimeDebugPath
         $timestamp = [DateTime]::Now.ToString("yyyy-MM-dd HH:mm:ss")
         $rawLen = if ($RawBytes) { $RawBytes.Length } else { 0 }
         $normLen = if ($NormalizedBytes) { $NormalizedBytes.Length } else { 0 }

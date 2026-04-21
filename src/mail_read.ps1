@@ -358,6 +358,9 @@ function Invoke-ReplyMessage {
     $originalBody -split "`n" | ForEach-Object {
         $quotedBody += "$quotePrefix$_`n"
     }
+    $quotedBody = Format-QuotedMessageBlock `
+        -Text $quotedBody `
+        -HeaderMarker $msgHeader
     
     # Build template
     $separator = $Config.EmailTemplates.HeaderSeparator
@@ -603,64 +606,72 @@ function Convert-HtmlToText {
         return ""
     }
     
-    $text = $Html
+    $text = $Html -replace "`r`n", "`n"
     
     # Step 1: Remove problematic elements entirely
+    $text = $text -replace '(?si)<!--.*?-->', ''
     $text = $text -replace '(?si)<script[^>]*>.*?</script>', ''
     $text = $text -replace '(?si)<style[^>]*>.*?</style>', ''
     $text = $text -replace '(?si)<head[^>]*>.*?</head>', ''
+    $text = $text -replace '(?si)<title[^>]*>.*?</title>', ''
     
-    # Step 2: Remove table structure but keep content
-    # Just strip the table/tr/td tags, keep everything inside
+    # Step 2: Preserve common structural markers before stripping tags
+    $text = $text -replace '(?si)<hr[^>]*>', "`n----------------------------------------`n"
+    $text = $text -replace '(?si)<img[^>]*alt=["'']([^"'']+)["''][^>]*>', ' [$1] '
+    $text = $text -replace '(?si)<img[^>]*>', ''
+    
+    # Step 3: Keep readable table/list structure
     $text = $text -replace '(?si)</?table[^>]*>', ''
     $text = $text -replace '(?si)</?tbody[^>]*>', ''
     $text = $text -replace '(?si)</?thead[^>]*>', ''
     $text = $text -replace '(?si)</?tfoot[^>]*>', ''
-    $text = $text -replace '(?si)</?tr[^>]*>', ' '
-    $text = $text -replace '(?si)</?t[dh][^>]*>', ' '
+    $text = $text -replace '(?si)<tr[^>]*>', ''
+    $text = $text -replace '(?si)</tr[^>]*>', "`n"
+    $text = $text -replace '(?si)<t[dh][^>]*>', ''
+    $text = $text -replace '(?si)</t[dh][^>]*>', ' | '
+    $text = $text -replace '(?si)<li[^>]*>', "`n- "
     
-    # Step 3: Decode HTML entities for URL processing
-    $text = $text -replace '&amp;', '&'
-    $text = $text -replace '&quot;', '"'
-    $text = $text -replace '&lt;', '<'
-    $text = $text -replace '&gt;', '>'
-    
-    # Step 4: Extract links before removing tags
-    # Convert <a href="URL">Label</a> to "Label <URL>"
-    $linkPattern = '(?i)<a[^>]*href=["'']([^"'']+)["''][^>]*>([^<]+)</a>'
-    $linkMatches = [regex]::Matches($text, $linkPattern)
-    foreach ($match in $linkMatches) {
-        $url = $match.Groups[1].Value
-        $label = $match.Groups[2].Value
-        $unwrappedUrl = Unwrap-SafeLink $url
-        # Use placeholder to protect angle brackets
-        $replacement = "$label __LINK__$unwrappedUrl`__ENDLINK__"
-        $text = $text.Replace($match.Value, $replacement)
-    }
+    # Step 4: Extract links before removing remaining tags.
+    # Allow nested inline markup inside the anchor.
+    $text = [regex]::Replace(
+        $text,
+        '(?is)<a\b[^>]*href=["'']([^"'']+)["''][^>]*>(.*?)</a>',
+        {
+            param($m)
+            $url = Unwrap-SafeLink $m.Groups[1].Value
+            $inner = $m.Groups[2].Value
+            $label = $inner -replace '(?is)<br\s*/?>', ' '
+            $label = $label -replace '(?is)<[^>]+>', ''
+            $label = [System.Web.HttpUtility]::HtmlDecode($label).Trim()
+
+            if ([string]::IsNullOrWhiteSpace($label)) {
+                return "__LINK__$url`__ENDLINK__"
+            }
+            if ($label -eq $url) {
+                return $label
+            }
+            return "$label __LINK__$url`__ENDLINK__"
+        }
+    )
     
     # Step 5: Convert block elements to newlines
-    # IMPORTANT: </div> becomes SPACE not newline!
-    # Many HTML emails use <div> for layout (single chars in cells), not paragraphs.
-    # Outlook uses <p> for real paragraphs, so </p> correctly creates newlines.
-    $text = $text -replace '(?si)</(p|h[1-6]|li)>', "`n"
+    # Outlook HTML commonly uses <div> for each visual line. Treating </div> as a
+    # space collapses whole messages into one paragraph, which breaks reply/forward
+    # quoting badly. Prefer preserving line structure over compact layout here.
+    $text = $text -replace '(?si)</(div|p|h[1-6]|li|ul|ol|blockquote|section|article|header|footer|address|pre)>', "`n"
     $text = $text -replace '(?si)<br\s*/?>', "`n"
-    $text = $text -replace '(?si)</div>', ' '
-    
+
     # Step 6: Remove ALL remaining HTML tags
     $text = $text -replace '<[^>]+>', ''
     
     # Step 7: Decode HTML entities
-    $text = $text -replace '&nbsp;', ' '
-    $text = $text -replace '&lt;', '<'
-    $text = $text -replace '&gt;', '>'
-    $text = $text -replace '&amp;', '&'
-    $text = $text -replace '&quot;', '"'
-    $text = $text -replace '&#39;', "'"
-    $text = $text -replace '&#(\d+);', { param($m) if ($m.Groups -and $m.Groups[1]) { [char][int]$m.Groups[1].Value } else { $m.Value } }
-    $text = $text -replace '&#x([0-9a-fA-F]+);', { param($m) if ($m.Groups -and $m.Groups[1]) { [char][Convert]::ToInt32($m.Groups[1].Value, 16) } else { $m.Value } }
+    $text = [System.Web.HttpUtility]::HtmlDecode($text)
+    $text = $text -replace [char]0x00A0, ' '
     
     # Step 8: Clean up whitespace
     $text = $text -replace '[ \t]+', ' '  # Multiple spaces/tabs to single space
+    $text = $text -replace '(?m)( \| )+$', ''  # Trim trailing table separators
+    $text = $text -replace '(?m)^(?:\| )+', ''  # Trim leading table separators
     $text = $text -replace ' *\n *', "`n"  # Remove spaces around newlines
     $text = $text -replace '\n{3,}', "`n`n"  # Max 2 consecutive newlines
     

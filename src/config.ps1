@@ -40,11 +40,15 @@ $script:Config = @{
     MinPageSize = 1
     MaxPageSize = 50
     
+    DataRootPath = Join-Path $PSScriptRoot "..\data"
+    AccountsDataPath = Join-Path $PSScriptRoot "..\data\accounts"
+
     # Editor path
     Editor = "nvim"
     
-    # Footer file path (relative to script root)
+    # Footer file paths
     FooterPath = Join-Path $PSScriptRoot "..\data\footer.txt"
+    HtmlFooterPath = Join-Path $PSScriptRoot "..\data\footer.html"
 
     # Persisted S/MIME draft flags - survives session restarts.
     # Stored locally because Outlook.com consumer accounts do not allow
@@ -56,6 +60,8 @@ $script:Config = @{
     # so the E/S list column indicators reappear without reopening each message.
     # Stores Status/Subject/Issuer/ValidUntil per message ID (not Body).
     SmimeCachePath  = Join-Path $PSScriptRoot "..\data\smime-cache.json"
+    SmimeDebugPath  = Join-Path $PSScriptRoot "..\data\smime-debug.txt"
+    CurrentAccount = $null
 
     # HTML body formatting (when sending HTML emails)
     HtmlBodyStyle = @{
@@ -148,3 +154,51 @@ $script:Config = @{
 
 # Make config globally accessible
 $global:Config = $script:Config
+
+function ConvertTo-AccountStorageKey {
+    param(
+        [string]$Email,
+        [string]$TenantId
+    )
+
+    $normalizedEmail = if ([string]::IsNullOrWhiteSpace($Email)) {
+        "unknown"
+    } else {
+        $Email.Trim().ToLowerInvariant()
+    }
+
+    $normalizedTenant = if ([string]::IsNullOrWhiteSpace($TenantId)) {
+        "consumers"
+    } else {
+        $TenantId.Trim().ToLowerInvariant()
+    }
+
+    $combined = "{0}__{1}" -f $normalizedEmail, $normalizedTenant
+    return ([regex]::Replace($combined, '[^a-z0-9@._-]', '_'))
+}
+
+function Set-AccountStoragePaths {
+    param(
+        [string]$Email,
+        [string]$TenantId
+    )
+
+    $accountKey = ConvertTo-AccountStorageKey -Email $Email -TenantId $TenantId
+    $accountPath = Join-Path $Config.AccountsDataPath $accountKey
+
+    if (-not (Test-Path $accountPath)) {
+        New-Item -ItemType Directory -Path $accountPath -Force | Out-Null
+    }
+
+    $Config.CurrentAccount = @{
+        Email     = $Email
+        TenantId  = $TenantId
+        Key       = $accountKey
+        DataPath  = $accountPath
+    }
+    $Config.FooterPath      = Join-Path $accountPath "footer.txt"
+    $Config.HtmlFooterPath  = Join-Path $accountPath "footer.html"
+    $Config.SmimeDraftsPath = Join-Path $accountPath "smime-drafts.json"
+    $Config.SmimeCachePath  = Join-Path $accountPath "smime-cache.json"
+    $Config.SmimeDebugPath  = Join-Path $accountPath "smime-debug.txt"
+}
