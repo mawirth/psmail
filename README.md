@@ -47,7 +47,13 @@ cached by Windows WAM — subsequent starts connect automatically.
 winget install Neovim.Neovim
 ```
 
-2. Create a footer for your account after the first successful login:
+2. Start psmail once and log in so the account-specific folder is created:
+
+```powershell
+pwsh .\psmail.ps1
+```
+
+3. Leave psmail running and open a second console, or quit psmail and return to the repo folder. Then create a footer for your account:
 
 ```powershell
 .\tools\Create-Footer.ps1 `
@@ -57,17 +63,17 @@ winget install Neovim.Neovim
     -AccountKey "max@example.com__consumers"
 ```
 
-3. Start psmail:
+4. Start psmail again if needed:
 
 ```powershell
 pwsh .\psmail.ps1
 ```
 
-4. Press `D` to switch to Drafts, then run `NEW`.
+5. Press `D` to switch to Drafts, then run `NEW`.
 
-5. Fill in `To:` and `Subject:`, write your message below `---`, then save and close the editor with `:wq`.
+6. Fill in `To:` and `Subject:`, write your message below `---`, then save and close the editor with `:wq`.
 
-6. Back in psmail, send the first draft with:
+7. Back in psmail, send the first draft with:
 
 ```text
 SEND 1
