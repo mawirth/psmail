@@ -1,14 +1,15 @@
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $files = @(
-  'C:\Users\marti\OneDrive\psmail\src\smime.ps1',
-  'C:\Users\marti\OneDrive\psmail\src\drafts.ps1',
-  'C:\Users\marti\OneDrive\psmail\src\mail_read.ps1',
-  'C:\Users\marti\OneDrive\psmail\src\config.ps1',
-  'C:\Users\marti\OneDrive\psmail\src\state.ps1',
-  'C:\Users\marti\OneDrive\psmail\src\mail_list.ps1',
-  'C:\Users\marti\OneDrive\psmail\src\ui.ps1',
-  'C:\Users\marti\OneDrive\psmail\src\graph.ps1',
-  'C:\Users\marti\OneDrive\psmail\src\util.ps1',
-  'C:\Users\marti\OneDrive\psmail\psmail.ps1'
+  (Join-Path $repoRoot 'src\smime.ps1'),
+  (Join-Path $repoRoot 'src\drafts.ps1'),
+  (Join-Path $repoRoot 'src\mail_read.ps1'),
+  (Join-Path $repoRoot 'src\config.ps1'),
+  (Join-Path $repoRoot 'src\state.ps1'),
+  (Join-Path $repoRoot 'src\mail_list.ps1'),
+  (Join-Path $repoRoot 'src\ui.ps1'),
+  (Join-Path $repoRoot 'src\graph.ps1'),
+  (Join-Path $repoRoot 'src\util.ps1'),
+  (Join-Path $repoRoot 'psmail.ps1')
 )
 
 $allOk = $true
