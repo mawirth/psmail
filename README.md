@@ -70,7 +70,7 @@ pwsh .\psmail.ps1
 
 5. Press `D` to switch to Drafts, then run `NEW`.
 
-6. Fill in `To:` and `Subject:`, write your message below `---`, then save and close the editor with `:wq`.
+6. Fill in `To:` and `Subject:`, write your message below `---`, then save and close your configured editor.
 
 7. Back in psmail, send the first draft with:
 
