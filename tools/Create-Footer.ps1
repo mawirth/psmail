@@ -20,7 +20,10 @@ param(
 )
 
 function Resolve-TargetFolder {
-    param([string]$ExplicitAccountKey)
+    param(
+        [string]$ExplicitAccountKey,
+        [string]$EmailAddress
+    )
 
     $dataFolder = Join-Path $PSScriptRoot "..\data"
     $accountsFolder = Join-Path $dataFolder "accounts"
@@ -32,6 +35,31 @@ function Resolve-TargetFolder {
     $accountDirs = @()
     if (Test-Path $accountsFolder) {
         $accountDirs = @(Get-ChildItem -Path $accountsFolder -Directory)
+    }
+
+    if (Test-ValuePresent $EmailAddress) {
+        $normalizedEmail = $EmailAddress.Trim().ToLowerInvariant()
+        $matchingDirs = @(
+            $accountDirs | Where-Object {
+                $_.Name.ToLowerInvariant().StartsWith("$normalizedEmail" + "__")
+            }
+        )
+
+        if ($matchingDirs.Count -eq 1) {
+            Write-Host "Using account from email: $($matchingDirs[0].Name)" -ForegroundColor DarkGray
+            return $matchingDirs[0].FullName
+        }
+
+        if ($matchingDirs.Count -gt 1) {
+            Write-Host "Multiple account folders match $EmailAddress. Please specify -AccountKey." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "Matching account keys:" -ForegroundColor DarkGray
+            foreach ($dir in $matchingDirs) {
+                Write-Host "  $($dir.Name)" -ForegroundColor DarkGray
+            }
+            Write-Host ""
+            throw "AccountKey required when the same email exists with multiple account keys."
+        }
     }
 
     if ($accountDirs.Count -eq 1) {
@@ -205,7 +233,7 @@ function Build-HtmlFooter {
 Write-Host ""
 Write-Host "Creating account-specific footer..." -ForegroundColor Cyan
 
-$targetFolder = Resolve-TargetFolder -ExplicitAccountKey $AccountKey
+$targetFolder = Resolve-TargetFolder -ExplicitAccountKey $AccountKey -EmailAddress $Email
 if (-not (Test-Path $targetFolder)) {
     New-Item -Path $targetFolder -ItemType Directory -Force | Out-Null
 }

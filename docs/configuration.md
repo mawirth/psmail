@@ -50,16 +50,18 @@ Create one with the included tool:
     -Name       "Your Name" `
     -Email      "you@example.com" `
     -Mobile     "+49 170 1234567" `
-    -Website    "https://yourwebsite.com" `
-    -AccountKey "your_account_key"
+    -Website    "https://yourwebsite.com"
 ```
 
-If you have multiple account folders, specify the target account explicitly:
+If the email address matches exactly one account folder, the tool resolves it
+automatically. If the same email exists with multiple account keys, specify the
+target account explicitly:
 
 ```powershell
 .\tools\Create-Footer.ps1 `
     -Name "Your Name" `
-    -AccountKey "max@example.com__consumers"
+    -Email "you@example.com" `
+    -AccountKey "you@example.com__consumers"
 ```
 
 Logo guidelines: PNG preferred, under 50 KB, 120–200 px wide.
@@ -85,7 +87,8 @@ For a plain-text footer instead of HTML:
 ```powershell
 .\tools\Create-Footer.ps1 `
     -Name "Your Name" `
-    -AccountKey "max@example.com__consumers" `
+    -Email "you@example.com" `
+    -AccountKey "you@example.com__consumers" `
     -TextOnly
 ```
 

@@ -59,8 +59,7 @@ pwsh .\psmail.ps1
 .\tools\Create-Footer.ps1 `
     -Name "Max Mustermann" `
     -Email "max@example.com" `
-    -Mobile "+49 170 1234567" `
-    -AccountKey "max@example.com__consumers"
+    -Mobile "+49 170 1234567"
 ```
 
 4. Start psmail again if needed:

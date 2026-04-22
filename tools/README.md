@@ -44,12 +44,12 @@ possible.
 .\tools\Create-Footer.ps1 `
     -Name "Max Mustermann" `
     -Email "max@example.com" `
-    -Mobile "+49 170 1234567" `
-    -AccountKey "max@example.com__consumers"
+    -Mobile "+49 170 1234567"
 ```
 
-If exactly one account folder exists under `data/accounts`, `-AccountKey` is
-optional. If multiple account folders exist, pass `-AccountKey`.
+If the email address matches exactly one account folder, the tool resolves it
+automatically. `-AccountKey` is only needed when the same email exists in
+multiple account folders or when you want to force a specific target.
 
 ## Parameters
 
@@ -64,7 +64,7 @@ optional. If multiple account folders exist, pass `-AccountKey`.
 - `-CertificationText` optional: extra credential line
 - `-CertificationUrl` optional: clickable certification link
 - `-LogoPath` optional: inline image as data URI
-- `-AccountKey` optional: target account folder name
+- `-AccountKey` optional: explicit target account folder name
 - `-TextOnly` optional: write `footer.txt` instead of `footer.html`
 
 ## Examples
@@ -75,8 +75,7 @@ Minimal private footer:
 .\tools\Create-Footer.ps1 `
     -Name "Max Mustermann" `
     -Email "max@example.com" `
-    -Mobile "+49 170 1234567" `
-    -AccountKey "max@example.com__consumers"
+    -Mobile "+49 170 1234567"
 ```
 
 Plain-text footer instead of HTML:
@@ -86,7 +85,6 @@ Plain-text footer instead of HTML:
     -Name "Max Mustermann" `
     -Email "max@example.com" `
     -Mobile "+49 170 1234567" `
-    -AccountKey "max@example.com__consumers" `
     -TextOnly
 ```
 
@@ -109,8 +107,8 @@ Address lines:
 ```powershell
 .\tools\Create-Footer.ps1 `
     -Name "Max Mustermann" `
-    -AddressLines "Musterstrasse 1","78462 Konstanz" `
-    -AccountKey "max@example.com__consumers"
+    -Email "max@example.com" `
+    -AddressLines "Musterstrasse 1","78462 Konstanz"
 ```
 
 ## Notes
