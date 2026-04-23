@@ -65,9 +65,11 @@ function Invoke-OpenMessage {
     # S/MIME verification (all read-only folders; result is cached per session)
     $smimeResult = $null
     if ($global:State.View -ne $Config.Folders.Drafts -and $Config.SmimeConfig.AutoVerify) {
+        $smimeFromCache = $false
         if (-not $global:State.SmimeCache) { $global:State.SmimeCache = @{} }
         if ($global:State.SmimeCache.ContainsKey($item.Id)) {
             $smimeResult = $global:State.SmimeCache[$item.Id]
+            $smimeFromCache = $true
         } else {
             Write-Host "Verifying S/MIME..." `
                 -ForegroundColor $Config.Colors.Info
@@ -93,6 +95,30 @@ function Invoke-OpenMessage {
                         -Attachment $_ -MessageId $item.Id
                 }
             ) | Select-Object -First 1
+
+            # Old versions could misclassify regular attachments such as PDFs as
+            # opaque S/MIME signatures and persist SignedInvalid in the cache.
+            # If the current attachment scan finds no structural S/MIME part,
+            # drop that weak cached status and treat the message as non-S/MIME.
+            if (-not $structuralAttachment -and
+                $smimeFromCache -and
+                $smimeResult -and
+                ($item.SmimeStatus -eq $Config.SmimeStatus.SignedInvalid -or
+                 $item.SmimeStatus -eq $Config.SmimeStatus.SignedUntrusted) -and
+                -not [bool]$smimeResult.IsEncrypted -and
+                [string]::IsNullOrWhiteSpace("$($smimeResult.Subject)") -and
+                [string]::IsNullOrWhiteSpace("$($smimeResult.Issuer)")) {
+                $item.SmimeStatus = $Config.SmimeStatus.None
+                $item.IsEncrypted = $false
+                $smimeResult = @{
+                    Status      = $Config.SmimeStatus.None
+                    IsEncrypted = $false
+                    Subject     = ""; Issuer = ""; ValidUntil = ""
+                    Error       = ""; Body = $null
+                }
+                $global:State.SmimeCache[$item.Id] = $smimeResult
+                Save-SmimeCache
+            }
 
             if ($structuralAttachment) {
                 $attachmentType = Get-SmimeTypeFromAttachment `

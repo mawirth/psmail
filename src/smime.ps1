@@ -525,7 +525,10 @@ function Get-SmimeTypeFromAttachment {
         return "Encrypted"
     }
 
-    return "OpaqueSign"
+    # No S/MIME hints in metadata and byte inspection could not decode PKCS#7.
+    # Treat the attachment as a normal user file instead of misclassifying it
+    # as an opaque signature container.
+    return "None"
 }
 
 function Test-IsSmimeStructuralAttachment {
