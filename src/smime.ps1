@@ -169,6 +169,59 @@ function Get-MimeCharset {
     return $null
 }
 
+function Get-InternetMessageHeaderValue {
+    <#
+    .SYNOPSIS
+    Extract a header value from Graph internetMessageHeaders.
+    #>
+    param(
+        [array]$Headers,
+        [Parameter(Mandatory)][string]$HeaderName
+    )
+
+    if (-not $Headers) { return $null }
+
+    $match = @($Headers | Where-Object {
+        $_.name -and $_.name.Equals($HeaderName, [System.StringComparison]::OrdinalIgnoreCase)
+    } | Select-Object -First 1)
+
+    if ($match.Count -gt 0) {
+        return "$($match[0].value)"
+    }
+
+    return $null
+}
+
+function Get-MimeHeaderParameter {
+    <#
+    .SYNOPSIS
+    Extract a parameter value (for example filename= or name=) from a MIME
+    header field.
+    #>
+    param(
+        [string]$HeaderValue,
+        [string]$ParameterName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($HeaderValue) -or
+        [string]::IsNullOrWhiteSpace($ParameterName)) {
+        return $null
+    }
+
+    $escaped = [regex]::Escape($ParameterName)
+    if ($HeaderValue -match "(?i)$escaped\s*=\s*`"([^`"]+)`"") {
+        return $matches[1]
+    }
+    if ($HeaderValue -match "(?i)$escaped\s*=\s*'([^']+)'") {
+        return $matches[1]
+    }
+    if ($HeaderValue -match "(?i)$escaped\s*=\s*([^;\r\n]+)") {
+        return $matches[1].Trim(' "', "'")
+    }
+
+    return $null
+}
+
 function Get-TextEncodingOrUtf8 {
     <#
     .SYNOPSIS
@@ -348,6 +401,155 @@ function Get-MimePartText {
     }
 
     return $body.TrimEnd([char[]]"`r`n")
+}
+
+function Get-MimePartBytes {
+    <#
+    .SYNOPSIS
+    Decode the raw bytes of a single MIME part body.
+    #>
+    param([Parameter(Mandatory)][string]$PartContent)
+
+    $cte  = Get-MimeHeaderValue -MimeContent $PartContent `
+        -HeaderName "Content-Transfer-Encoding"
+    $body = Get-MimeBodySection -MimeText $PartContent
+
+    if (-not $cte) {
+        return [System.Text.Encoding]::UTF8.GetBytes($body)
+    }
+
+    switch ($cte.ToLower().Trim()) {
+        "base64" {
+            $bytes = ConvertFrom-Base64Mime -Body $body.Trim()
+            if ($bytes) { return $bytes }
+        }
+        "quoted-printable" {
+            $bytes = ConvertFrom-QuotedPrintableMime -Body $body
+            if ($bytes) { return $bytes }
+        }
+    }
+
+    return [System.Text.Encoding]::UTF8.GetBytes($body)
+}
+
+function Get-MimeAttachmentName {
+    <#
+    .SYNOPSIS
+    Determine the filename of a MIME attachment from Content-Disposition or
+    Content-Type parameters.
+    #>
+    param([Parameter(Mandatory)][string]$PartContent)
+
+    $disposition = Get-MimeHeaderValue -MimeContent $PartContent `
+        -HeaderName "Content-Disposition"
+    $contentType = Get-MimeHeaderValue -MimeContent $PartContent `
+        -HeaderName "Content-Type"
+
+    $name = Get-MimeHeaderParameter -HeaderValue $disposition -ParameterName "filename"
+    if (-not $name) {
+        $name = Get-MimeHeaderParameter -HeaderValue $contentType -ParameterName "name"
+    }
+
+    return $name
+}
+
+function Get-MimeEmbeddedAttachments {
+    <#
+    .SYNOPSIS
+    Recursively extract user-visible attachments from a MIME entity,
+    including attachments embedded inside S/MIME wrappers.
+    #>
+    param([Parameter(Mandatory)][string]$MimeContent)
+
+    if ([string]::IsNullOrWhiteSpace($MimeContent)) { return @() }
+
+    $contentType = Get-MimeHeaderValue -MimeContent $MimeContent `
+        -HeaderName "Content-Type"
+    if (-not $contentType) { return @() }
+
+    $contentTypeLower = $contentType.ToLower()
+
+    if ($contentTypeLower -match '^multipart/signed') {
+        $boundary = Get-MimeBoundary -ContentType $contentType
+        if (-not $boundary) { return @() }
+        $body = Get-MimeBodySection -MimeText $MimeContent
+        $parts = @(Get-MultipartPartsRaw -MimeBody $body -Boundary $boundary)
+        if ($parts.Count -lt 1) { return @() }
+        return @(Get-MimeEmbeddedAttachments -MimeContent $parts[0])
+    }
+
+    if ($contentTypeLower -match '^application/(x-)?pkcs7-mime\b') {
+        try {
+            $body = Get-MimeBodySection -MimeText $MimeContent
+            $cmsBytes = ConvertFrom-Base64Mime -Body $body.Trim()
+            if (-not $cmsBytes) { return @() }
+
+            if ($contentTypeLower -match 'smime-type\s*=\s*"?(enveloped-data)"?') {
+                $env = New-Object System.Security.Cryptography.Pkcs.EnvelopedCms
+                $env.Decode([byte[]]$cmsBytes)
+                $env.Decrypt()
+                $innerMime = [System.Text.Encoding]::UTF8.GetString($env.ContentInfo.Content)
+                return @(Get-MimeEmbeddedAttachments -MimeContent $innerMime)
+            }
+
+            $signedCms = New-Object System.Security.Cryptography.Pkcs.SignedCms
+            $signedCms.Decode([byte[]]$cmsBytes)
+            $innerMime = [System.Text.Encoding]::UTF8.GetString($signedCms.ContentInfo.Content)
+            return @(Get-MimeEmbeddedAttachments -MimeContent $innerMime)
+        } catch {
+            return @()
+        }
+    }
+
+    if ($contentTypeLower -match '^multipart/') {
+        $boundary = Get-MimeBoundary -ContentType $contentType
+        if (-not $boundary) { return @() }
+
+        $body = Get-MimeBodySection -MimeText $MimeContent
+        $parts = @(Get-MultipartPartsRaw -MimeBody $body -Boundary $boundary)
+        $results = [System.Collections.ArrayList]::new()
+        foreach ($part in $parts) {
+            foreach ($attachment in @(Get-MimeEmbeddedAttachments -MimeContent $part)) {
+                [void]$results.Add($attachment)
+            }
+        }
+        return @($results)
+    }
+
+    if ($contentTypeLower -match '^message/rfc822') {
+        $inner = Get-MimeBodySection -MimeText $MimeContent
+        return @(Get-MimeEmbeddedAttachments -MimeContent $inner)
+    }
+
+    $disposition = Get-MimeHeaderValue -MimeContent $MimeContent `
+        -HeaderName "Content-Disposition"
+    $name = Get-MimeAttachmentName -PartContent $MimeContent
+    $isInline = ($disposition -match '^(?i)inline\b')
+    $isAttachment = ($disposition -match '^(?i)attachment\b')
+
+    if (-not $name -and -not $isAttachment) {
+        return @()
+    }
+
+    $nameLower = if ($name) { $name.ToLowerInvariant() } else { "" }
+    if ($nameLower -eq 'smime.p7s' -or
+        $nameLower -eq 'smime.p7m' -or
+        $contentTypeLower -match '^application/(x-)?pkcs7-') {
+        return @()
+    }
+
+    $bytes = Get-MimePartBytes -PartContent $MimeContent
+    if (-not $bytes) { return @() }
+
+    return @(
+        [pscustomobject]@{
+            Name        = if ($name) { $name } else { "attachment.bin" }
+            ContentType = ($contentType -split ';', 2)[0].Trim()
+            Bytes       = $bytes
+            Size        = $bytes.Length
+            IsInline    = [bool]$isInline
+        }
+    )
 }
 
 function Get-MimeReadableText {
@@ -1080,6 +1282,43 @@ function Get-MessageSmimeStatus {
     try {
         $mime = Get-MessageMime -MessageId $MessageId
         if (-not $mime) {
+            $messageForHeaders = Get-Message -MessageId $MessageId `
+                -Select "internetMessageHeaders,from"
+            if ($messageForHeaders -and $messageForHeaders.internetMessageHeaders) {
+                $contentTypeHeader = Get-InternetMessageHeaderValue `
+                    -Headers $messageForHeaders.internetMessageHeaders `
+                    -HeaderName "Content-Type"
+                $contentTypeLower = if ($contentTypeHeader) {
+                    $contentTypeHeader.ToLowerInvariant()
+                } else { "" }
+
+                if ($contentTypeLower -match '^application/(x-)?pkcs7-mime\b' -and
+                    $contentTypeLower -match 'smime-type\s*=\s*"?(signed-data)"?' ) {
+                    return @{
+                        Status      = $Config.SmimeStatus.SignedUntrusted
+                        IsEncrypted = $false
+                        Subject     = ""
+                        Issuer      = ""
+                        ValidUntil  = ""
+                        Error       = "S/MIME signature present; raw MIME not available for cryptographic verification"
+                        Body        = $null
+                    }
+                }
+
+                if ($contentTypeLower -match '^application/(x-)?pkcs7-mime\b' -and
+                    $contentTypeLower -match 'smime-type\s*=\s*"?(enveloped-data)"?') {
+                    return @{
+                        Status      = $Config.SmimeStatus.Encrypted
+                        IsEncrypted = $true
+                        Subject     = ""
+                        Issuer      = ""
+                        ValidUntil  = ""
+                        Error       = ""
+                        Body        = $null
+                    }
+                }
+            }
+
             return @{
                 Status = $Config.SmimeStatus.None
                 Subject = ""; Issuer = ""; ValidUntil = ""; Error = ""; Body = $null
@@ -1646,20 +1885,16 @@ function Build-SmimeMimeContent {
 function New-SmimeSignedMime {
     <#
     .SYNOPSIS
-    Wrap MIME content in multipart/signed (detached SHA-256 signature).
+    Wrap MIME content in opaque S/MIME signed-data form.
 
-    RFC 2046 §5.1.1 CRLF canonicalisation
-    The CRLF immediately before a boundary delimiter is "conceptually
-    attached to the boundary" and is NOT part of the preceding body part.
-    RFC-compliant verifiers (Outlook, iOS Mail, OpenSSL) therefore hash
-    the body content WITHOUT that trailing CRLF. This function strips the
-    trailing CRLF before computing the signature and emits it separately
-    as the boundary separator, ensuring the signed bytes match exactly
-    what every verifier will compute.
+    Detached multipart/signed is sensitive to any MIME re-serialisation on the
+    transport path. Microsoft Graph / Exchange parses MIME requests and may
+    normalise the message before delivery, which breaks detached signatures
+    especially once multipart bodies or attachments are involved.
 
-    ExcludeRoot: intermediate CA certificates (e.g. DigiCert) are
-    included in the CMS so recipients can build the full chain.
-    Returns complete multipart/signed MIME string (CRLF line endings).
+    Opaque signing embeds the full content inside CMS SignedData
+    (application/pkcs7-mime; smime-type=signed-data), so later MIME rewriting
+    does not invalidate the signature.
     #>
     param(
         [Parameter(Mandatory)]
@@ -1670,15 +1905,8 @@ function New-SmimeSignedMime {
 
     $crlf = "`r`n"
 
-    # Decode to string; strip trailing CRLF before signing (RFC 2046 rule).
-    $contentStr = [System.Text.Encoding]::UTF8.GetString($ContentBytes)
-    $signStr    = if ($contentStr.EndsWith($crlf)) {
-        $contentStr.Substring(0, $contentStr.Length - 2)
-    } else { $contentStr }
-    [byte[]]$signBytes = [System.Text.Encoding]::UTF8.GetBytes($signStr)
-
-    $ci     = New-Object System.Security.Cryptography.Pkcs.ContentInfo(, $signBytes)
-    $signed = New-Object System.Security.Cryptography.Pkcs.SignedCms($ci, $true)
+    $ci     = New-Object System.Security.Cryptography.Pkcs.ContentInfo(, $ContentBytes)
+    $signed = New-Object System.Security.Cryptography.Pkcs.SignedCms($ci, $false)
     $signer = New-Object System.Security.Cryptography.Pkcs.CmsSigner($Certificate)
     # ExcludeRoot: include intermediate CA certs; root is pre-installed.
     $signer.IncludeOption =
@@ -1688,36 +1916,24 @@ function New-SmimeSignedMime {
         New-Object System.Security.Cryptography.Oid("2.16.840.1.101.3.4.2.1")
 
     $signed.ComputeSignature($signer, $false)
-    [byte[]]$sigBytes = $signed.Encode()
+    [byte[]]$cmsBytes = $signed.Encode()
 
-    $b64   = [Convert]::ToBase64String($sigBytes)
+    $b64   = [Convert]::ToBase64String($cmsBytes)
     $sigSb = [System.Text.StringBuilder]::new()
     for ($i = 0; $i -lt $b64.Length; $i += 76) {
         [void]$sigSb.Append(
             $b64.Substring($i, [Math]::Min(76, $b64.Length - $i)) + $crlf)
     }
 
-    $bnd = "SmimeSigBnd_" + [Guid]::NewGuid().ToString("N")
-
     $mime = [System.Text.StringBuilder]::new()
     [void]$mime.Append(
-        "Content-Type: multipart/signed; " +
-        "protocol=`"application/pkcs7-signature`"; " +
-        "micalg=`"sha-256`"; " +
-        "boundary=`"$bnd`"$crlf")
-    [void]$mime.Append($crlf)
-    [void]$mime.Append("--$bnd$crlf")
-    [void]$mime.Append($signStr)          # signed content WITHOUT trailing CRLF
-    [void]$mime.Append($crlf)             # boundary separator (not part of signed content)
-    [void]$mime.Append("--$bnd$crlf")
-    [void]$mime.Append(
-        "Content-Type: application/pkcs7-signature; name=`"smime.p7s`"$crlf")
+        "Content-Type: application/pkcs7-mime; " +
+        "smime-type=signed-data; name=`"smime.p7m`"$crlf")
     [void]$mime.Append("Content-Transfer-Encoding: base64$crlf")
     [void]$mime.Append(
-        "Content-Disposition: attachment; filename=`"smime.p7s`"$crlf")
+        "Content-Disposition: attachment; filename=`"smime.p7m`"$crlf")
     [void]$mime.Append($crlf)
     [void]$mime.Append($sigSb.ToString())
-    [void]$mime.Append("--$bnd--$crlf")
     return $mime.ToString()
 }
 
@@ -1767,6 +1983,56 @@ function New-SmimeEncryptedMime {
     [void]$mime.Append($crlf)
     [void]$mime.Append($encSb.ToString())
     return $mime.ToString()
+}
+
+function Save-OutgoingSmimeMimeDebug {
+    <#
+    .SYNOPSIS
+    Persist the outgoing RFC 2822 MIME for post-send debugging.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$MimeContent,
+        [string]$Label = "outgoing"
+    )
+
+    try {
+        $debugPath = $Config.SmimeDebugPath
+        if (-not $debugPath) { return }
+
+        $timestamp = [DateTime]::Now.ToString("yyyy-MM-dd HH:mm:ss")
+        $lines = @(
+            "===== Outgoing S/MIME MIME $timestamp ($Label) =====",
+            $MimeContent,
+            ""
+        )
+        Add-Content -Path $debugPath -Value $lines -Encoding UTF8
+    } catch { }
+}
+
+function New-MimeDraftMessage {
+    <#
+    .SYNOPSIS
+    Create a draft message from raw RFC 2822 MIME content.
+    #>
+    param([Parameter(Mandatory)][string]$MimeContent)
+
+    $uri = "/v1.0/me/messages"
+
+    try {
+        [byte[]]$mimeBytes = [System.Text.Encoding]::UTF8.GetBytes($MimeContent)
+        $b64Body = [Convert]::ToBase64String($mimeBytes)
+
+        return Invoke-MgGraphRequest `
+            -Method POST `
+            -Uri $uri `
+            -Body $b64Body `
+            -ContentType "text/plain" `
+            -ErrorAction Stop
+    } catch {
+        $detail = if ($_.ErrorDetails.Message) { " | $($_.ErrorDetails.Message)" } else { "" }
+        Write-Error-Message "MIME draft create failed: $($_.Exception.Message)$detail"
+        return $null
+    }
 }
 
 function Protect-MessageSmime {
@@ -2001,36 +2267,19 @@ function Protect-MessageSmime {
                 "Subject: $subject$crlf"  +
                 $protectedMime
 
-    # 8. Send: try PUT /$value on the existing draft then /send (preferred;
-    #    works for Microsoft 365 accounts and some personal accounts).
-    #    Fall back to POST /me/sendMail if PUT is not available.
-    Write-Info "Sending..."
-    [byte[]]$mimeBytes = [System.Text.Encoding]::UTF8.GetBytes($fullMime)
+    Save-OutgoingSmimeMimeDebug -MimeContent $fullMime -Label "pre-send"
 
-    $valueUri = "/v1.0/me/messages/$MessageId/`$value"
-    $usedPut  = $false
-    try {
-        Invoke-MgGraphRequest `
-            -Method      PUT `
-            -Uri         $valueUri `
-            -Body        $mimeBytes `
-            -ContentType "text/plain" `
-            -ErrorAction Stop
-        $usedPut = $true
-    } catch {
-        # PUT /$value is not supported for personal Microsoft accounts (405).
-        # Silently fall back to POST /me/sendMail.
-        if (-not (Send-MimeDirectly -MimeContent $fullMime)) {
-            return $false
-        }
-        # sendMail creates a new sent message; remove the unsent original draft.
-        Remove-Message -MessageId $MessageId | Out-Null
-        Write-Success "S/MIME message sent"
-        return $true
+    # 8. Create a MIME-native draft and send that draft.
+    # Graph documents S/MIME support on MIME create/send paths; applying raw
+    # MIME to a JSON draft or direct re-serialisation has proven unreliable
+    # for detached signatures with attachments.
+    Write-Info "Sending..."
+    $mimeDraft = New-MimeDraftMessage -MimeContent $fullMime
+    if (-not $mimeDraft -or -not $mimeDraft.id) {
+        return $false
     }
 
-    # PUT succeeded – now send the updated draft.
-    $sendUri = "/v1.0/me/messages/$MessageId/send"
+    $sendUri = "/v1.0/me/messages/$($mimeDraft.id)/send"
     try {
         Invoke-MgGraphRequest `
             -Method      POST `
@@ -2041,6 +2290,9 @@ function Protect-MessageSmime {
         Write-Error-Message "Send failed: $($_.Exception.Message)$detail"
         return $false
     }
+
+    # Remove the original editor draft after the MIME-native draft was sent.
+    Remove-Message -MessageId $MessageId | Out-Null
 
     Write-Success "S/MIME message sent"
     return $true
