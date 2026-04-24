@@ -814,19 +814,27 @@ function Convert-TextToHtml {
     if ([string]::IsNullOrWhiteSpace($Text)) {
         return "<p></p>"
     }
-    
-    # Escape HTML special characters
-    $html = [System.Net.WebUtility]::HtmlEncode($Text)
-    
-    # Convert double line breaks to paragraph breaks
-    $html = $html -replace "(`r`n|`n){2,}", "</p>`n<p>"
-    
-    # Convert single line breaks to <br>
-    $html = $html -replace "`r`n", "<br>`n"
-    $html = $html -replace "`n", "<br>`n"
-    
-    # Wrap in paragraphs
-    $html = "<p>$html</p>"
+
+    $normalized = $Text -replace "`r`n", "`n"
+    $normalized = $normalized -replace "`r", "`n"
+    $normalized = $normalized.Trim()
+
+    # Collapse oversized blank areas to a single paragraph break.
+    $normalized = $normalized -replace "`n{3,}", "`n`n"
+
+    $paragraphs = @()
+    foreach ($paragraph in ($normalized -split "`n`n")) {
+        $encodedParagraph = [System.Net.WebUtility]::HtmlEncode($paragraph)
+        $encodedParagraph = $encodedParagraph -replace "`n", "<br>`n"
+        $paragraphs += "<p style=`"margin: 0 0 0.85em 0;`">$encodedParagraph</p>"
+    }
+
+    if ($paragraphs.Count -gt 0) {
+        $paragraphs[$paragraphs.Count - 1] = $paragraphs[$paragraphs.Count - 1] `
+            -replace ' margin: 0 0 0\.85em 0;', ' margin: 0;'
+    }
+
+    $html = $paragraphs -join "`n"
     
     # Apply font styling from config
     $fontFamily = $Config.HtmlBodyStyle.FontFamily

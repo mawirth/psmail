@@ -19,6 +19,8 @@ param(
     [switch]$TextOnly
 )
 
+. (Join-Path $PSScriptRoot "..\src\config.ps1")
+
 function Resolve-TargetFolder {
     param(
         [string]$ExplicitAccountKey,
@@ -152,6 +154,9 @@ function Build-TextFooter {
 }
 
 function Build-HtmlFooter {
+    $fontFamily = $Config.HtmlBodyStyle.FontFamily
+    $fontSize = $Config.HtmlBodyStyle.FontSize
+
     $detailLines = [System.Collections.Generic.List[string]]::new()
 
     $detailLines.Add("<strong>$(ConvertTo-HtmlText $Name)</strong>")
@@ -220,7 +225,7 @@ function Build-HtmlFooter {
     $detailsHtml = "<p style=`"margin: 0;`">" + ($detailLines -join "<br>`r`n") + "</p>"
 
     $html = @(
-        "<div style=`"margin-top: 18px; color: #222; font-family: Aptos, Calibri, Helvetica, sans-serif; font-size: 12pt; line-height: 1.45;`">"
+        "<div style=`"margin-top: 18px; color: #222; font-family: $fontFamily; font-size: $fontSize; line-height: 1.45;`">"
         "  $signoffHtml"
         "  $detailsHtml"
         $(if ($logoHtml) { "  $logoHtml" })

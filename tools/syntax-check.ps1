@@ -1,3 +1,5 @@
+#requires -Version 7.0
+
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $files = @(
   (Join-Path $repoRoot 'src\smime.ps1'),
@@ -9,7 +11,8 @@ $files = @(
   (Join-Path $repoRoot 'src\ui.ps1'),
   (Join-Path $repoRoot 'src\graph.ps1'),
   (Join-Path $repoRoot 'src\util.ps1'),
-  (Join-Path $repoRoot 'psmail.ps1')
+  (Join-Path $repoRoot 'psmail.ps1'),
+  (Join-Path $repoRoot 'tools\Create-Footer.ps1')
 )
 
 $allOk = $true
