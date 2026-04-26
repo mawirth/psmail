@@ -144,11 +144,13 @@ function Render-MessageRow {
     } else { 
         $Item.FromAddress 
     }
+    $addr = Remove-TerminalControlSequences $addr
     $addrTrunc = Truncate-String $addr $ColumnWidths.Address
     Write-Host ("{0,-18} " -f $addrTrunc) -NoNewline
     
     # Subject
-    $subject = Truncate-String $Item.Subject $ColumnWidths.Subject
+    $subject = Remove-TerminalControlSequences $Item.Subject
+    $subject = Truncate-String $subject $ColumnWidths.Subject
     Write-Host $subject
 }
 

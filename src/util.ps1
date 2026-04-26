@@ -18,6 +18,24 @@ function Truncate-String {
     return ($String.Substring(0, $MaxLength - 1) + "…")
 }
 
+function Remove-TerminalControlSequences {
+    <#
+    .SYNOPSIS
+    Strip ANSI escape sequences and other non-printable control characters
+    from untrusted text before rendering it in the console.
+    #>
+    param([string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) {
+        return ""
+    }
+
+    $escapeChar = [char]27
+    $sanitized = $Text -replace "$([regex]::Escape([string]$escapeChar))\[[0-?]*[ -/]*[@-~]", ""
+    $sanitized = $sanitized -replace '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', ""
+    return $sanitized
+}
+
 function Format-DateTime {
     param([datetime]$DateTime)
     
