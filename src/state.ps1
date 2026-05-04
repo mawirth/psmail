@@ -61,6 +61,7 @@ function Initialize-State {
         LastQuery      = $null
         OpenMessageId  = $null
         Filter         = $null
+        InboxClass     = "focused"
         StatusMessage  = $null
         StatusColor    = $null
         # S/MIME: per-draft flags, keyed by message ID.
@@ -187,6 +188,31 @@ function Clear-Filter {
 
 function Get-Filter {
     return $global:State.Filter
+}
+
+function Set-InboxClassification {
+    param([string]$Classification)
+
+    if ($Classification -and
+        $Classification -ne "focused" -and
+        $Classification -ne "other") {
+        throw "Unsupported inbox classification: $Classification"
+    }
+
+    $global:State.InboxClass = $Classification
+    # Reset items and NextLink so Focused/Other/All pages never mix.
+    Reset-StateItems
+}
+
+function Clear-InboxClassification {
+    Set-InboxClassification -Classification $null
+}
+
+function Get-InboxClassification {
+    if ($global:State.View -ne $Config.Folders.Inbox) {
+        return $null
+    }
+    return $global:State.InboxClass
 }
 
 function Set-StatusMessage {

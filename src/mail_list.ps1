@@ -23,6 +23,7 @@ function ConvertTo-MessageItem {
         DateTime = [datetime]$Message.receivedDateTime
         IsRead = $Message.isRead
         HasAttachments = $Message.hasAttachments
+        InferenceClassification = $Message.inferenceClassification
         SmimeStatus = $Config.SmimeStatus.None
         IsEncrypted = $false
     }
@@ -65,6 +66,7 @@ function Get-Messages {
     )
     
     $filterText = Get-Filter
+    $inboxClass = Get-InboxClassification
     
     if ($filterText) {
         # Use filtered message retrieval
@@ -72,13 +74,15 @@ function Get-Messages {
             -FolderId $global:State.View `
             -FilterText $filterText `
             -TargetCount $Count `
-            -NextLink $NextLink
+            -NextLink $NextLink `
+            -InferenceClassification $inboxClass
     } else {
         # Normal message retrieval
         return Get-FolderMessages `
             -FolderId $global:State.View `
             -Top $Count `
-            -NextLink $NextLink
+            -NextLink $NextLink `
+            -InferenceClassification $inboxClass
     }
 }
 

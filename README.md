@@ -12,6 +12,7 @@ using **Microsoft Graph API**.
 - **Reply, Forward, Redraft** — with quoted text and attachment copy
 - **Attachments** — upload when composing, save received files
 - **Contact search** — search email history, copy address to clipboard
+- **Focused Inbox** — switch Inbox between Relevant, Sonstige, and all / Alle messages
 - **Filtering** — server-side search by sender, subject, or body across all folders
 - **S/MIME** — verify incoming signatures, decrypt incoming encrypted mail, sign and encrypt outgoing mail
 - **Safer encrypted drafts** — `Encrypt: yes` keeps cleartext body and attachment paths local and stores only an online placeholder draft until send
@@ -90,6 +91,7 @@ pwsh psmail.ps1 -Version # show version
 | Key | Action |
 |-----|--------|
 | `I` / `D` / `S` / `G` / `J` | Switch folder (Inbox / Drafts / Sent / Deleted / Junk) |
+| `F` / `O` / `A` | Inbox Relevant / Sonstige / Alle |
 | `L` | List / refresh |
 | `R <#>` | Read message |
 | `M` | Load next page |
@@ -106,6 +108,8 @@ pwsh psmail.ps1 -Version # show version
 | `Q` | Quit |
 
 → Full command reference: **[docs/commands.md](docs/commands.md)**
+
+psmail starts in Inbox Relevant mode. Use `A` to show the full Inbox.
 
 ## Message List (Inbox)
 

@@ -67,13 +67,16 @@ function Get-FolderMessages {
         [int]$Top = 20,
         
         [string]$Select = "id,subject,from,toRecipients," +
-            "receivedDateTime,isRead,hasAttachments",
+            "receivedDateTime,isRead,hasAttachments," +
+            "inferenceClassification",
         
         [string]$OrderBy = "receivedDateTime DESC",
         
         [string]$NextLink = $null,
         
-        [string]$Filter = $null
+        [string]$Filter = $null,
+
+        [string]$InferenceClassification = $null
     )
     
     if ($NextLink) {
@@ -81,14 +84,31 @@ function Get-FolderMessages {
         $response = Invoke-GraphRequest -Method GET -Uri $NextLink
     } else {
         # Build new query
+        $effectiveFilter = $Filter
+        $effectiveOrderBy = $OrderBy
+
+        if ($InferenceClassification) {
+            $classificationFilter = "inferenceClassification eq '$InferenceClassification'"
+            if ($effectiveFilter) {
+                $effectiveFilter = "($effectiveFilter) and ($classificationFilter)"
+            } else {
+                $effectiveFilter = $classificationFilter
+            }
+
+            # Graph rejects inferenceClassification filters ordered only by
+            # receivedDateTime with InefficientFilter. Including the filtered
+            # field first keeps the list date-descending within the class.
+            $effectiveOrderBy = "inferenceClassification,receivedDateTime DESC"
+        }
+
         $uri = "/v1.0/me/mailFolders/$FolderId/messages" +
                "?`$top=$Top" +
                "&`$select=$Select" +
-               "&`$orderby=$OrderBy"
+               "&`$orderby=$([uri]::EscapeDataString($effectiveOrderBy))"
         
         # Add filter if provided
-        if ($Filter) {
-            $uri += "&`$filter=$Filter"
+        if ($effectiveFilter) {
+            $uri += "&`$filter=$([uri]::EscapeDataString($effectiveFilter))"
         }
         
         $response = Invoke-GraphRequest -Method GET -Uri $uri
@@ -360,26 +380,60 @@ function Get-FilteredMessages {
         
         [int]$TargetCount = 20,
         
-        [string]$NextLink = $null
+        [string]$NextLink = $null,
+
+        [string]$InferenceClassification = $null
     )
 
     $selectFields = "id,subject,from,toRecipients," +
-        "receivedDateTime,isRead,hasAttachments"
+        "receivedDateTime,isRead,hasAttachments," +
+        "inferenceClassification"
 
-    if ($NextLink) {
-        $response = Invoke-GraphRequest -Method GET -Uri $NextLink
-    } else {
-        $quotedSearch = '"' + ($FilterText -replace '"', '""') + '"'
-        $encodedSearch = [uri]::EscapeDataString($quotedSearch)
-        $uri = "/v1.0/me/mailFolders/$FolderId/messages" +
-            "?`$top=$TargetCount" +
-            "&`$select=$selectFields" +
-            "&`$search=$encodedSearch"
-        $response = Invoke-GraphRequest -Method GET -Uri $uri
+    $next = $NextLink
+    $messages = [System.Collections.ArrayList]@()
+
+    do {
+        if ($next) {
+            $response = Invoke-GraphRequest -Method GET -Uri $next
+        } else {
+            $quotedSearch = '"' + ($FilterText -replace '"', '""') + '"'
+            $encodedSearch = [uri]::EscapeDataString($quotedSearch)
+            $uri = "/v1.0/me/mailFolders/$FolderId/messages" +
+                "?`$top=$TargetCount" +
+                "&`$select=$selectFields" +
+                "&`$search=$encodedSearch"
+            $response = Invoke-GraphRequest -Method GET -Uri $uri
+        }
+
+        if (-not $response) {
+            break
+        }
+
+        foreach ($message in @($response.value)) {
+            if ($InferenceClassification -and
+                $message.inferenceClassification -ne $InferenceClassification) {
+                continue
+            }
+            [void]$messages.Add($message)
+            if ($messages.Count -ge $TargetCount) {
+                break
+            }
+        }
+
+        $next = $response.'@odata.nextLink'
+    } while ($InferenceClassification -and
+        $messages.Count -lt $TargetCount -and
+        $next)
+
+    if (-not $InferenceClassification -and $response) {
+        return @{
+            Messages = $response.value
+            NextLink = $response.'@odata.nextLink'
+        }
     }
 
     return @{
-        Messages = if ($response) { $response.value } else { $null }
-        NextLink = if ($response) { $response.'@odata.nextLink' } else { $null }
+        Messages = @($messages)
+        NextLink = $next
     }
 }

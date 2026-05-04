@@ -88,6 +88,22 @@ while ($true) {
     $handled = $false
     switch ($command) {
         "I" {
+            Clear-InboxClassification
+            Switch-ToFolder $Config.Folders.Inbox
+            $handled = $true
+        }
+        "F" {
+            Set-InboxClassification -Classification "focused"
+            Switch-ToFolder $Config.Folders.Inbox
+            $handled = $true
+        }
+        "O" {
+            Set-InboxClassification -Classification "other"
+            Switch-ToFolder $Config.Folders.Inbox
+            $handled = $true
+        }
+        "A" {
+            Clear-InboxClassification
             Switch-ToFolder $Config.Folders.Inbox
             $handled = $true
         }

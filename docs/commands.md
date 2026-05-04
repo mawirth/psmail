@@ -5,6 +5,9 @@
 | Command | Description |
 |---------|-------------|
 | `I` | Switch to Inbox |
+| `F` | Switch to Inbox: Relevant / Focused |
+| `O` | Switch to Inbox: Sonstige / Other |
+| `A` | Switch to Inbox: all messages / Alle |
 | `D` | Switch to Drafts |
 | `S` | Switch to Sent |
 | `G` | Switch to Deleted |
@@ -88,6 +91,19 @@ All bulk operations show a preview and require confirmation.
 ---
 
 ## Filtering
+
+Inbox supports Outlook's Focused Inbox split:
+
+```
+> F   # Relevant / Focused
+> O   # Sonstige / Other
+> A   # all / Alle Inbox messages
+```
+
+psmail starts in Relevant / Focused mode. Focused Inbox is stored by Microsoft as the message
+`inferenceClassification`, not as separate folders. The mode only applies to
+Inbox. `FILTER <text>` can be combined with `F` or `O`; psmail searches through
+Graph and keeps only messages from the selected Inbox class.
 
 ```
 > FILTER john

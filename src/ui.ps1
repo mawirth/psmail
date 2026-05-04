@@ -163,12 +163,12 @@ function Get-ListLayoutInfo {
     $consoleHeight = $Host.UI.RawUI.WindowSize.Height
     if ($consoleHeight -le 0) { $consoleHeight = 30 }
 
-    $filterLines = if (Get-Filter) { 2 } else { 0 }
+    $filterLines = if ((Get-Filter) -or (Get-InboxClassification)) { 2 } else { 0 }
 
     $headerLines = 3      # Write-Header: blank + title + separator
     $listHeaderLines = 1  # "# U ..." header
     $paginationLines = 1  # fixed slot, with or without [M] message
-    $menuLines = 7        # Show-Menu output
+    $menuLines = 8        # Show-Menu output
     $promptLines = 1      # Read-Command prompt
 
     $reservedLines = $headerLines + $filterLines + $listHeaderLines +
@@ -249,7 +249,9 @@ function Show-Menu {
     }
     
     # Global commands
-    Write-Host "[I] Inbox  [D] Drafts  [S] Sent  " `
+    Write-Host "[I] Inbox  [F] Relevant  [O] Sonstige  [A] Alle  " `
+        -ForegroundColor $Config.Colors.MenuGlobal
+    Write-Host "[D] Drafts  [S] Sent  " `
         -NoNewline -ForegroundColor $Config.Colors.MenuGlobal
     Write-Host "[G] Deleted  [J] Junk" `
         -ForegroundColor $Config.Colors.MenuGlobal
@@ -313,8 +315,17 @@ function Show-MessageList {
 
     # Show active filter if present
     $filterText = Get-Filter
-    if ($filterText) {
-        Write-Host "[Filter active: '$filterText']" -ForegroundColor $Config.Colors.FilterActive
+    $inboxClass = Get-InboxClassification
+    if ($filterText -or $inboxClass) {
+        $indicators = @()
+        if ($inboxClass) {
+            $label = if ($inboxClass -eq "focused") { "Relevant" } else { "Sonstige" }
+            $indicators += "Inbox: $label"
+        }
+        if ($filterText) {
+            $indicators += "Filter active: '$filterText'"
+        }
+        Write-Host ("[{0}]" -f ($indicators -join " | ")) -ForegroundColor $Config.Colors.FilterActive
         Write-Host ""
     }
 
@@ -335,8 +346,12 @@ function Show-MessageList {
     }
 
     if ($displayItems.Count -eq 0) {
-        $emptyMessage = if ($filterText) {
+        $emptyMessage = if ($filterText -and $inboxClass) {
+            "No $inboxClass inbox messages match filter '$filterText'."
+        } elseif ($filterText) {
             "No messages match filter '$filterText'."
+        } elseif ($inboxClass) {
+            "No $inboxClass inbox messages."
         } else {
             "No messages."
         }
