@@ -15,8 +15,11 @@ function Invoke-OpenMessage {
         return
     }
     
-    # Fetch full message
-    $msg = Get-Message -MessageId $item.Id
+    # Fetch only the fields used by the read view and reply/forward context.
+    $selectFields = "subject,from,toRecipients,ccRecipients," +
+        "receivedDateTime,body,bodyPreview,hasAttachments,isRead," +
+        "internetMessageHeaders"
+    $msg = Get-Message -MessageId $item.Id -Select $selectFields
     
     if (-not $msg) {
         Write-Error-Message "Failed to load message"

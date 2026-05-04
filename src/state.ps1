@@ -55,7 +55,7 @@ function Initialize-State {
 
     $global:State = @{
         View           = $Config.Folders.Inbox
-        Items          = @()
+        Items          = [System.Collections.ArrayList]@()
         NextLink       = $null
         PrevLinks      = @()
         LastQuery      = $null
@@ -109,7 +109,7 @@ function Save-SmimeCache {
 }
 
 function Reset-StateItems {
-    $global:State.Items = @()
+    $global:State.Items = [System.Collections.ArrayList]@()
     $global:State.NextLink = $null
     $global:State.PrevLinks = @()
 }
@@ -119,7 +119,7 @@ function Add-StateItem {
         [Parameter(Mandatory)]
         [hashtable]$Item
     )
-    $global:State.Items += $Item
+    [void]$global:State.Items.Add($Item)
 }
 
 function Get-StateItem {
@@ -157,8 +157,8 @@ function Remove-StateItems {
         $index++
     }
     
-    # Update state
-    $global:State.Items = $remainingItems
+    # Update state, keeping fast append semantics for later pagination.
+    $global:State.Items = [System.Collections.ArrayList]@($remainingItems)
 }
 
 function Set-View {
