@@ -2,7 +2,6 @@
 # Helper tool to create an account-specific footer in HTML or plain text
 
 param(
-    [Parameter(Mandatory)]
     [string]$Name,
 
     [string]$Title,
@@ -20,6 +19,80 @@ param(
 )
 
 . (Join-Path $PSScriptRoot "..\src\config.ps1")
+
+$PsmailProjectUrl = "https://github.com/mawirth/psmail"
+$providedFooterDetailParameters = @(
+    "Title",
+    "Email",
+    "Website",
+    "Phone",
+    "Mobile",
+    "AddressLines",
+    "CertificationText",
+    "CertificationUrl",
+    "LogoPath"
+) | Where-Object { $PSBoundParameters.ContainsKey($_) }
+$PromptForOptionalFooterDetails = (-not $PSBoundParameters.ContainsKey("Name")) -or ($providedFooterDetailParameters.Count -eq 0)
+
+function Read-FooterRequiredValue {
+    param(
+        [string]$Prompt,
+        [string]$CurrentValue
+    )
+
+    if (Test-ValuePresent $CurrentValue) {
+        return $CurrentValue
+    }
+
+    do {
+        $value = Read-Host $Prompt
+        if (Test-ValuePresent $value) {
+            return $value.Trim()
+        }
+
+        Write-Host "This value is required." -ForegroundColor Yellow
+    } while ($true)
+}
+
+function Read-FooterOptionalValue {
+    param(
+        [string]$Prompt,
+        [string]$CurrentValue
+    )
+
+    if (Test-ValuePresent $CurrentValue) {
+        return $CurrentValue
+    }
+
+    $value = Read-Host "$Prompt (optional)"
+    if (Test-ValuePresent $value) {
+        return $value.Trim()
+    }
+
+    return $CurrentValue
+}
+
+function Read-FooterOptionalLines {
+    param(
+        [string]$Prompt,
+        [string[]]$CurrentValue
+    )
+
+    if ($CurrentValue -and $CurrentValue.Count -gt 0) {
+        return $CurrentValue
+    }
+
+    $value = Read-Host "$Prompt (optional, separate lines with |)"
+    if (-not (Test-ValuePresent $value)) {
+        return $CurrentValue
+    }
+
+    return @(
+        $value -split "\|" |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { Test-ValuePresent $_ }
+    )
+}
 
 function Resolve-TargetFolder {
     param(
@@ -111,6 +184,27 @@ function ConvertTo-LinkHtml {
     return "<a href=`"$safeHref`" style=`"color: #1a5fb4; text-decoration: none;`">$safeLabel</a>"
 }
 
+function Read-FooterInput {
+    Write-Host ""
+    if ($PromptForOptionalFooterDetails) {
+        Write-Host "Footer details. Press Enter to skip optional fields." -ForegroundColor Cyan
+    }
+
+    $script:Name = Read-FooterRequiredValue -Prompt "Name" -CurrentValue $script:Name
+
+    if (-not $PromptForOptionalFooterDetails) {
+        return
+    }
+
+    $script:Signoff = Read-FooterOptionalValue -Prompt "Signoff" -CurrentValue $script:Signoff
+    $script:Title = Read-FooterOptionalValue -Prompt "Title or role" -CurrentValue $script:Title
+    $script:Email = Read-FooterOptionalValue -Prompt "Email" -CurrentValue $script:Email
+    $script:Mobile = Read-FooterOptionalValue -Prompt "Mobile" -CurrentValue $script:Mobile
+    $script:Phone = Read-FooterOptionalValue -Prompt "Phone" -CurrentValue $script:Phone
+    $script:Website = Read-FooterOptionalValue -Prompt "Website" -CurrentValue $script:Website
+    $script:AddressLines = Read-FooterOptionalLines -Prompt "Address lines" -CurrentValue $script:AddressLines
+}
+
 function Build-TextFooter {
     $lines = [System.Collections.Generic.List[string]]::new()
 
@@ -150,6 +244,9 @@ function Build-TextFooter {
         $lines.Add($CertificationUrl)
     }
 
+    $lines.Add("")
+    $lines.Add("Sent by psmail: $PsmailProjectUrl")
+
     return (($lines | Where-Object { $_ -ne $null }) -join "`r`n").TrimEnd()
 }
 
@@ -175,9 +272,11 @@ function Build-HtmlFooter {
         }
     }
 
-    $emailLine = ConvertTo-LinkHtml -Href "mailto:$Email" -Label $Email
-    if (Test-ValuePresent $emailLine) {
-        $detailLines.Add($emailLine)
+    if (Test-ValuePresent $Email) {
+        $emailLine = ConvertTo-LinkHtml -Href "mailto:$Email" -Label $Email
+        if (Test-ValuePresent $emailLine) {
+            $detailLines.Add($emailLine)
+        }
     }
 
     if (Test-ValuePresent $Phone) {
@@ -216,6 +315,9 @@ function Build-HtmlFooter {
         }
     }
 
+    $psmailLine = ConvertTo-LinkHtml -Href $PsmailProjectUrl -Label "Sent by psmail"
+    $psmailHtml = "<p style=`"margin: 12px 0 0 0; color: #666; font-size: 0.9em;`">$psmailLine</p>"
+
     $signoffHtml = if (Test-ValuePresent $Signoff) {
         "<p style=`"margin: 0 0 12px 0;`">$(ConvertTo-HtmlText $Signoff)</p>"
     } else {
@@ -229,6 +331,7 @@ function Build-HtmlFooter {
         "  $signoffHtml"
         "  $detailsHtml"
         $(if ($logoHtml) { "  $logoHtml" })
+        "  $psmailHtml"
         "</div>"
     ) | Where-Object { Test-ValuePresent $_ }
 
@@ -237,6 +340,8 @@ function Build-HtmlFooter {
 
 Write-Host ""
 Write-Host "Creating account-specific footer..." -ForegroundColor Cyan
+
+Read-FooterInput
 
 $targetFolder = Resolve-TargetFolder -ExplicitAccountKey $AccountKey -EmailAddress $Email
 if (-not (Test-Path $targetFolder)) {

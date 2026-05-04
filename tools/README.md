@@ -9,9 +9,10 @@ data/accounts/<account-key>/footer.html
 ```
 
 This is meant for psmail accounts that want a richer signature without having
-to hand-edit the footer files. The current focus is a clean contact footer:
-name, signoff, email, phone/mobile, website, address lines, and an optional
-certification link.
+to hand-edit the footer files. The tool prompts for useful contact details when
+they are not supplied as parameters. The current focus is a clean contact
+footer: name, signoff, email, phone/mobile, website, address lines, and an
+optional certification link.
 
 By default the tool writes `footer.html`.
 With `-TextOnly`, it writes `footer.txt` instead and removes an existing
@@ -33,10 +34,12 @@ Mit freundlichen Grüßen,
 Max Mustermann
 max@example.com
 Mobil: +49 170 1234567
+
+Sent by psmail: https://github.com/mawirth/psmail
 ```
 
 The matching HTML footer uses the same content with clickable links where
-possible.
+possible, including the final `Sent by psmail` GitHub link.
 
 ## Usage
 
@@ -50,6 +53,16 @@ possible.
 If the email address matches exactly one account folder, the tool resolves it
 automatically. `-AccountKey` is only needed when the same email exists in
 multiple account folders or when you want to force a specific target.
+
+For interactive setup, run the tool without contact parameters:
+
+```powershell
+.\tools\Create-Footer.ps1
+```
+
+The tool asks for the required name and then prompts for optional title, email,
+phone/mobile, website, and address lines. Press Enter to skip an optional field.
+If you pass contact details as parameters, the tool uses those values directly.
 
 ## Parameters
 

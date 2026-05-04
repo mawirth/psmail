@@ -23,9 +23,13 @@ function Invoke-SaveAttachment {
         return
     }
     
-    # Filter to file attachments only
+    # Filter to real user-visible file attachments only. S/MIME signatures can
+    # arrive from Graph as fileAttachment objects, but they are message
+    # structure rather than files the user intentionally attached.
     $attachments = @($attachments | Where-Object {
-        $_.'@odata.type' -eq '#microsoft.graph.fileAttachment'
+        $_.'@odata.type' -eq '#microsoft.graph.fileAttachment' -and
+        -not (Test-IsSmimeStructuralAttachment `
+            -Attachment $_ -MessageId $global:State.OpenMessageId)
     })
     
     if ($AttachmentIndex -lt 1 -or `
@@ -86,9 +90,12 @@ function Invoke-SaveAllAttachments {
         return
     }
     
-    # File attachments that are not inline
+    # File attachments that are not inline and not S/MIME structure blobs.
     $toSave = @($attachments | Where-Object {
-        $_.'@odata.type' -eq '#microsoft.graph.fileAttachment' -and -not $_.isInline
+        $_.'@odata.type' -eq '#microsoft.graph.fileAttachment' -and
+        -not $_.isInline -and
+        -not (Test-IsSmimeStructuralAttachment `
+            -Attachment $_ -MessageId $global:State.OpenMessageId)
     })
     
     if ($toSave.Count -eq 0) {
@@ -154,9 +161,11 @@ function Show-Attachments {
         return
     }
     
-    # Filter to file attachments only
+    # Filter to real user-visible file attachments only.
     $attachments = @($attachments | Where-Object {
-        $_.'@odata.type' -eq '#microsoft.graph.fileAttachment'
+        $_.'@odata.type' -eq '#microsoft.graph.fileAttachment' -and
+        -not (Test-IsSmimeStructuralAttachment `
+            -Attachment $_ -MessageId $global:State.OpenMessageId)
     })
     
     if ($attachments.Count -eq 0) {

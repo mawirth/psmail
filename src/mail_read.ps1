@@ -71,14 +71,27 @@ function Invoke-OpenMessage {
         $smimeFromCache = $false
         if (-not $global:State.SmimeCache) { $global:State.SmimeCache = @{} }
         if ($global:State.SmimeCache.ContainsKey($item.Id)) {
-            $smimeResult = $global:State.SmimeCache[$item.Id]
-            $smimeFromCache = $true
-        } else {
+            $cachedSmimeResult = $global:State.SmimeCache[$item.Id]
+            if (Test-PersistableSmimeStatus `
+                    $cachedSmimeResult.Status `
+                    ([bool]$cachedSmimeResult.IsEncrypted)) {
+                $smimeResult = $cachedSmimeResult
+                $smimeFromCache = $true
+            } else {
+                $global:State.SmimeCache.Remove($item.Id)
+            }
+        }
+
+        if (-not $smimeResult) {
             Write-Host "Verifying S/MIME..." `
                 -ForegroundColor $Config.Colors.Info
             $smimeResult = Get-MessageSmimeStatus -MessageId $item.Id
-            $global:State.SmimeCache[$item.Id] = $smimeResult
-            Save-SmimeCache
+            if (Test-PersistableSmimeStatus `
+                    $smimeResult.Status `
+                    ([bool]$smimeResult.IsEncrypted)) {
+                $global:State.SmimeCache[$item.Id] = $smimeResult
+                Save-SmimeCache
+            }
         }
         $item.SmimeStatus = $smimeResult.Status
         $item.IsEncrypted = [bool]$smimeResult.IsEncrypted
