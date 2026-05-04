@@ -264,6 +264,53 @@ function Update-Message {
     return Invoke-GraphRequest -Method PATCH -Uri $uri -Body $Properties
 }
 
+function Set-MessageInferenceClassification {
+    <#
+    .SYNOPSIS
+    Mark one message as Focused or Other in Outlook Focused Inbox.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$MessageId,
+
+        [Parameter(Mandatory)]
+        [ValidateSet("focused", "other")]
+        [string]$Classification
+    )
+
+    return Update-Message `
+        -MessageId $MessageId `
+        -Properties @{ inferenceClassification = $Classification }
+}
+
+function Set-InferenceClassificationOverride {
+    <#
+    .SYNOPSIS
+    Always classify future Inbox mail from a sender as Focused or Other.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Address,
+
+        [string]$Name = "",
+
+        [Parameter(Mandatory)]
+        [ValidateSet("focused", "other")]
+        [string]$Classification
+    )
+
+    $uri = "/v1.0/me/inferenceClassification/overrides"
+    $body = @{
+        classifyAs = $Classification
+        senderEmailAddress = @{
+            name = $Name
+            address = $Address
+        }
+    }
+
+    return Invoke-GraphRequest -Method POST -Uri $uri -Body $body
+}
+
 function New-DraftMessage {
     <#
     .SYNOPSIS

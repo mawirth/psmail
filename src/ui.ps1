@@ -168,7 +168,12 @@ function Get-ListLayoutInfo {
     $headerLines = 3      # Write-Header: blank + title + separator
     $listHeaderLines = 1  # "# U ..." header
     $paginationLines = 1  # fixed slot, with or without [M] message
-    $menuLines = 8        # Show-Menu output
+    # Inbox has two extra action lines for Focused Inbox training.
+    $menuLines = if ($global:State.View -eq $Config.Folders.Inbox) {
+        10
+    } else {
+        8
+    }
     $promptLines = 1      # Read-Command prompt
 
     $reservedLines = $headerLines + $filterLines + $listHeaderLines +
@@ -224,6 +229,10 @@ function Show-Menu {
             Write-Host "[L] List  [R #] Read  [X #/#-#] Delete  " `
                 -NoNewline
             Write-Host "[K #/#-#] Junk" -ForegroundColor $Config.Colors.MenuAction
+            Write-Host "[FOCUS #] Relevant  [OTHER #] Sonstige  " `
+                -NoNewline -ForegroundColor $Config.Colors.MenuAction
+            Write-Host "[FOCUS! #] Always Relevant  [OTHER! #] Always Sonstige" `
+                -ForegroundColor $Config.Colors.MenuAction
         }
         "drafts" {
             Write-Host "[L] List  [NEW] New  [E #] Edit  " `

@@ -92,6 +92,9 @@ pwsh psmail.ps1 -Version # show version
 |-----|--------|
 | `I` / `D` / `S` / `G` / `J` | Switch folder (Inbox / Drafts / Sent / Deleted / Junk) |
 | `F` / `O` / `A` | Inbox Relevant / Sonstige / Alle |
+| `FOCUS <#>` / `OTHER <#>` | Mark Inbox message as Relevant / Sonstige |
+| `RELEVANT <#>` / `SONSTIGE <#>` | German aliases for `FOCUS` / `OTHER` |
+| `FOCUS! <#>` / `OTHER! <#>` | Always classify future mail from sender as Relevant / Sonstige |
 | `L` | List / refresh |
 | `R <#>` | Read message |
 | `M` | Load next page |
@@ -110,6 +113,11 @@ pwsh psmail.ps1 -Version # show version
 → Full command reference: **[docs/commands.md](docs/commands.md)**
 
 psmail starts in Inbox Relevant mode. Use `A` to show the full Inbox.
+Use `OTHER <#>` or `FOCUS <#>` to correct the classification of a selected
+Inbox message; `SONSTIGE <#>` and `RELEVANT <#>` are aliases. Use
+`OTHER! <#>` or `FOCUS! <#>` to classify the selected message and create a
+sender rule for future mail from the same sender. The `!` commands support
+ranges and reload the current list view afterwards.
 
 ## Message List (Inbox)
 

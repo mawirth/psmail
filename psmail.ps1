@@ -334,6 +334,50 @@ while ($true) {
             # Show available S/MIME certificates
             Show-SmimeCertificates
         }
+        "FOCUS" {
+            Invoke-InboxClassificationOperation `
+                -Argument $arg `
+                -Classification "focused"
+        }
+        "RELEVANT" {
+            Invoke-InboxClassificationOperation `
+                -Argument $arg `
+                -Classification "focused"
+        }
+        "OTHER" {
+            Invoke-InboxClassificationOperation `
+                -Argument $arg `
+                -Classification "other"
+        }
+        "SONSTIGE" {
+            Invoke-InboxClassificationOperation `
+                -Argument $arg `
+                -Classification "other"
+        }
+        "FOCUS!" {
+            Invoke-InboxClassificationOperation `
+                -Argument $arg `
+                -Classification "focused" `
+                -Always
+        }
+        "RELEVANT!" {
+            Invoke-InboxClassificationOperation `
+                -Argument $arg `
+                -Classification "focused" `
+                -Always
+        }
+        "OTHER!" {
+            Invoke-InboxClassificationOperation `
+                -Argument $arg `
+                -Classification "other" `
+                -Always
+        }
+        "SONSTIGE!" {
+            Invoke-InboxClassificationOperation `
+                -Argument $arg `
+                -Classification "other" `
+                -Always
+        }
         "FILTER" {
             # Set filter for current folder
             if (-not $arg) {

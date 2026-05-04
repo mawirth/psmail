@@ -18,6 +18,7 @@ function ConvertTo-MessageItem {
         Index = $Index
         Id = $Message.id
         Subject = $Message.subject
+        FromName = $Message.from.emailAddress.name
         FromAddress = $Message.from.emailAddress.address
         ToAddress = ""
         DateTime = [datetime]$Message.receivedDateTime

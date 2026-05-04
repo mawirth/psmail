@@ -191,3 +191,171 @@ function Invoke-BulkMessageOperation {
         Show-MessageList
     }
 }
+
+function Get-SelectedMessageItems {
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string]$Argument,
+
+        [Parameter(Mandatory)]
+        [string]$Command
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Argument)) {
+        Write-Error-Message "Usage: $Command <#>, $Command <#-#>, or $Command <#,#,#>"
+        return @()
+    }
+
+    $indices = Parse-IndexRange $Argument
+    if (-not $indices) {
+        Write-Error-Message "Invalid index or range: $Argument"
+        return @()
+    }
+
+    $items = @()
+    foreach ($index in $indices) {
+        $item = Get-StateItem $index
+        if (-not $item) {
+            Write-Error-Message "Invalid message number: $index"
+            continue
+        }
+        $items += @{ Index = $index; Item = $item }
+    }
+
+    return @($items)
+}
+
+function Invoke-InboxClassificationOperation {
+    <#
+    .SYNOPSIS
+    Mark Inbox messages as Focused or Other, optionally creating sender overrides.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string]$Argument,
+
+        [Parameter(Mandatory)]
+        [ValidateSet("focused", "other")]
+        [string]$Classification,
+
+        [switch]$Always
+    )
+
+    if ($global:State.View -ne $Config.Folders.Inbox) {
+        Write-Error-Message "Focused Inbox classification commands are only available in Inbox"
+        return
+    }
+
+    $command = if ($Classification -eq "focused") { "FOCUS" } else { "OTHER" }
+    if ($Always) { $command += "!" }
+
+    $entries = @(Get-SelectedMessageItems -Argument $Argument -Command $command)
+    if ($entries.Count -eq 0) {
+        return
+    }
+
+    $label = if ($Classification -eq "focused") { "Relevant" } else { "Sonstige" }
+
+    if ($Always) {
+        Write-Host ""
+        $promptText = if ($entries.Count -eq 1) {
+            "Always classify future mail from this sender as $($label)?"
+        } else {
+            "Always classify future mail from these $($entries.Count) senders as $($label)?"
+        }
+        Write-Host $promptText -ForegroundColor $Config.Colors.ConfirmWarning
+
+        foreach ($entry in $entries) {
+            $item = $entry.Item
+            Write-Host "  #$($entry.Index)  $($item.FromAddress)" `
+                -ForegroundColor $Config.Colors.MessageDetail
+            Write-Host "  Subject: $($item.Subject)" `
+                -ForegroundColor $Config.Colors.MessageDetail
+        }
+        Write-Host ""
+
+        $confirmMsg = if ($entries.Count -eq 1) {
+            "Confirm sender rule"
+        } else {
+            "Confirm sender rules"
+        }
+        if (-not (Confirm-Action $confirmMsg)) {
+            Show-CurrentView
+            Show-MessageList
+            return
+        }
+    }
+
+    $successCount = 0
+    $messageSuccessCount = 0
+    $overrideSuccessCount = 0
+    $removedIds = @()
+    $seenOverrideAddresses = @{}
+    $currentInboxClass = Get-InboxClassification
+
+    foreach ($entry in $entries) {
+        $item = $entry.Item
+
+        if ($Always) {
+            $messageResult = Set-MessageInferenceClassification `
+                -MessageId $item.Id `
+                -Classification $Classification
+            if ($messageResult) {
+                $messageSuccessCount++
+                $item.InferenceClassification = $Classification
+            }
+
+            if ([string]::IsNullOrWhiteSpace($item.FromAddress)) {
+                Write-Error-Message "Cannot create sender rule: selected message has no From address"
+                continue
+            }
+
+            $addressKey = $item.FromAddress.ToLowerInvariant()
+            if ($seenOverrideAddresses.ContainsKey($addressKey)) {
+                continue
+            }
+            $seenOverrideAddresses[$addressKey] = $true
+            $overrideResult = Set-InferenceClassificationOverride `
+                -Address $item.FromAddress `
+                -Name $item.FromName `
+                -Classification $Classification
+            if ($overrideResult) {
+                $overrideSuccessCount++
+            }
+        } else {
+            $result = Set-MessageInferenceClassification `
+                -MessageId $item.Id `
+                -Classification $Classification
+            if ($result) {
+                $item.InferenceClassification = $Classification
+            }
+        }
+
+        if (-not $Always -and $result) {
+            $successCount++
+            if (-not $Always -and
+                $currentInboxClass -and
+                $currentInboxClass -ne $Classification) {
+                $removedIds += $item.Id
+            }
+        }
+    }
+
+    $statusMessage = if ($Always) {
+        "Marked $messageSuccessCount message(s) as $label | Created/updated $overrideSuccessCount sender rule(s)"
+    } else {
+        "Marked $successCount message(s) as $label"
+    }
+    Set-StatusMessage -Message $statusMessage -Color "Success"
+
+    if ($Always) {
+        Invoke-ListMessages
+    } elseif ($removedIds.Count -gt 0) {
+        Invoke-RefreshMessageList -DeletedMessageIds $removedIds
+    } else {
+        Show-CurrentView
+        Show-MessageList
+    }
+}

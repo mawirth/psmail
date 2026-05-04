@@ -34,6 +34,10 @@
 |---------|-------------|
 | `X <#>` / `X <#-#>` | Delete message(s) → Deleted |
 | `K <#>` / `K <#-#>` | Move to Junk |
+| `FOCUS <#>` / `RELEVANT <#>` | Mark message(s) as Relevant / Focused |
+| `OTHER <#>` / `SONSTIGE <#>` | Mark message(s) as Sonstige / Other |
+| `FOCUS! <#>` / `RELEVANT! <#>` | Always classify future mail from this sender as Relevant / Focused |
+| `OTHER! <#>` / `SONSTIGE! <#>` | Always classify future mail from this sender as Sonstige / Other |
 
 ### Drafts
 | Command | Description |
@@ -104,6 +108,30 @@ psmail starts in Relevant / Focused mode. Focused Inbox is stored by Microsoft a
 `inferenceClassification`, not as separate folders. The mode only applies to
 Inbox. `FILTER <text>` can be combined with `F` or `O`; psmail searches through
 Graph and keeps only messages from the selected Inbox class.
+
+You can correct Outlook's classification for selected Inbox messages:
+
+```
+> OTHER 3      # mark this message as Sonstige / Other
+> FOCUS 3      # mark this message as Relevant / Focused
+> OTHER 2-5    # ranges and comma lists work too
+```
+
+German aliases are also available: `SONSTIGE` for `OTHER`, and `RELEVANT`
+for `FOCUS`.
+
+To classify the selected message(s) and create or update a sender rule for
+future Inbox messages, use the `!` commands. These ask for confirmation because
+they affect later mail from the same sender:
+
+```
+> OTHER! 3     # future mail from this sender goes to Sonstige / Other
+> FOCUS! 3     # future mail from this sender goes to Relevant / Focused
+```
+
+The `!` commands support the same ranges and comma-separated lists as `X`.
+After applying the message classification and sender rule(s), psmail reloads
+the current list view.
 
 ```
 > FILTER john
