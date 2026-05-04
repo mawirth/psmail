@@ -42,6 +42,14 @@ cached by Windows WAM — subsequent starts connect automatically.
 
 ## Minimal Walkthrough
 
+0. Install Git if needed, clone the repository, and enter the project folder:
+
+```powershell
+winget install Git.Git
+git clone https://github.com/mawirth/psmail
+cd psmail
+```
+
 1. Install PowerShell 7 and a text editor if needed. For Neovim on Windows, for example:
 
 ```powershell
