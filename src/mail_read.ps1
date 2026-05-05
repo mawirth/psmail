@@ -65,6 +65,35 @@ function Invoke-OpenMessage {
         )
     }
 
+    # Classify attachments before verification. A message with neither S/MIME
+    # headers nor structural S/MIME attachments should not trigger the raw-MIME
+    # verification path or show a misleading transient status line.
+    $structuralAttachment = $null
+    if ($fileAttachments.Count -gt 0) {
+        $structuralAttachment = @(
+            $fileAttachments | Where-Object {
+                Test-IsSmimeStructuralAttachment `
+                    -Attachment $_ -MessageId $item.Id
+            }
+        ) | Select-Object -First 1
+    }
+    $userAttachments = @($fileAttachments | Where-Object {
+        -not (Test-IsSmimeStructuralAttachment -Attachment $_ -MessageId $item.Id)
+    })
+
+    $contentTypeHeader = Get-InternetMessageHeaderValue `
+        -Headers $msg.internetMessageHeaders `
+        -HeaderName "Content-Type"
+    $contentTypeLower = if ($contentTypeHeader) {
+        $contentTypeHeader.ToLowerInvariant()
+    } else { "" }
+    $hasSmimeHeaderHint = (
+        $contentTypeLower -match '^multipart/signed\b' -or
+        $contentTypeLower -match '^application/(x-)?pkcs7-(mime|signature)\b' -or
+        $contentTypeLower -match 'smime-type\s*='
+    )
+    $hasSmimeHint = ($hasSmimeHeaderHint -or $null -ne $structuralAttachment)
+
     # S/MIME verification (all read-only folders; result is cached per session)
     $smimeResult = $null
     if ($global:State.View -ne $Config.Folders.Drafts -and $Config.SmimeConfig.AutoVerify) {
@@ -72,9 +101,10 @@ function Invoke-OpenMessage {
         if (-not $global:State.SmimeCache) { $global:State.SmimeCache = @{} }
         if ($global:State.SmimeCache.ContainsKey($item.Id)) {
             $cachedSmimeResult = $global:State.SmimeCache[$item.Id]
-            if (Test-PersistableSmimeStatus `
+            if ($hasSmimeHint -and
+                (Test-PersistableSmimeStatus `
                     $cachedSmimeResult.Status `
-                    ([bool]$cachedSmimeResult.IsEncrypted)) {
+                    ([bool]$cachedSmimeResult.IsEncrypted))) {
                 $smimeResult = $cachedSmimeResult
                 $smimeFromCache = $true
             } else {
@@ -82,7 +112,7 @@ function Invoke-OpenMessage {
             }
         }
 
-        if (-not $smimeResult) {
+        if (-not $smimeResult -and $hasSmimeHint) {
             Write-Host "Verifying S/MIME..." `
                 -ForegroundColor $Config.Colors.Info
             $smimeResult = Get-MessageSmimeStatus -MessageId $item.Id
@@ -93,25 +123,20 @@ function Invoke-OpenMessage {
                 Save-SmimeCache
             }
         }
+        if (-not $smimeResult) {
+            $smimeResult = @{
+                Status      = $Config.SmimeStatus.None
+                IsEncrypted = $false
+                Subject     = ""; Issuer = ""; ValidUntil = ""
+                Error       = ""; Body = $null
+            }
+        }
         $item.SmimeStatus = $smimeResult.Status
         $item.IsEncrypted = [bool]$smimeResult.IsEncrypted
-
-        # Attachments — filter out S/MIME structural files early so the result can
-        # also be reused for fallback verification and list-cache cleanup.
-        $userAttachments = @($fileAttachments | Where-Object {
-            -not (Test-IsSmimeStructuralAttachment -Attachment $_ -MessageId $item.Id)
-        })
 
         # Fallback/reconciliation when raw MIME is inaccessible or an old cache
         # entry classified an opaque-signed smime.p7m as encrypted.
         if ($fileAttachments.Count -gt 0) {
-            $structuralAttachment = @(
-                $fileAttachments | Where-Object {
-                    Test-IsSmimeStructuralAttachment `
-                        -Attachment $_ -MessageId $item.Id
-                }
-            ) | Select-Object -First 1
-
             # Old versions could misclassify regular attachments such as PDFs as
             # opaque S/MIME signatures and persist SignedInvalid in the cache.
             # If the current attachment scan finds no structural S/MIME part,
