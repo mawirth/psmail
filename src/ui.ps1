@@ -93,6 +93,16 @@ function Render-MessageListHeader {
     }
 }
 
+function Get-ActiveAccountLabel {
+    if (-not $Config.CurrentAccount) {
+        return "not connected"
+    }
+
+    $email = $Config.CurrentAccount.Email ?? "unknown"
+    $tenant = $Config.CurrentAccount.TenantId ?? "unknown"
+    return "{0} ({1})" -f $email, $tenant
+}
+
 function Render-MessageRow {
     <#
     .SYNOPSIS
@@ -157,7 +167,7 @@ function Get-ListLayoutInfo {
 
     $filterLines = ((Get-Filter) -or (Get-InboxClassification)) ? 2 : 0
 
-    $headerLines = 3      # Write-Header: blank + title + separator
+    $headerLines = 4      # Write-Header plus active account line
     $listHeaderLines = 1  # "# U ..." header
     $paginationLines = 1  # fixed slot, with or without [M] message
     # Inbox has two extra action lines for Focused Inbox training.
@@ -297,6 +307,8 @@ function Show-CurrentView {
     
     $viewName = $Config.FolderNames[$global:State.View]
     Write-Header $viewName
+    Write-Host ("Account: {0}" -f (Get-ActiveAccountLabel)) `
+        -ForegroundColor $Config.Colors.Info
 }
 
 function Show-MessageList {

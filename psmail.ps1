@@ -44,6 +44,7 @@ if ($Version) {
 . "$ScriptRoot\src\util.ps1"
 . "$ScriptRoot\src\state.ps1"
 . "$ScriptRoot\src\auth.ps1"
+. "$ScriptRoot\src\accounts.ps1"
 . "$ScriptRoot\src\graph.ps1"
 . "$ScriptRoot\src\message_operations.ps1"
 . "$ScriptRoot\src\ui.ps1"
@@ -67,6 +68,7 @@ if (-not (Connect-GraphMail)) {
 }
 
 # Initialize state after login so local cache/draft files are account-specific
+Register-CurrentAccountProfile | Out-Null
 Initialize-State
 
 # Initial list
@@ -130,6 +132,10 @@ while ($true) {
             Disconnect-GraphMail
             Write-Success "Logged out successfully"
             exit 0
+        }
+        "ACCOUNT" {
+            Invoke-AccountCommand -Argument $arg
+            $handled = $true
         }
         "Q" {
             Write-Host ""
@@ -334,6 +340,9 @@ while ($true) {
         "SMIME" {
             # Show available S/MIME certificates
             Show-SmimeCertificates
+        }
+        "DEBUGSMIME" {
+            Invoke-DebugSmimeMessage -Argument $arg
         }
         "FOCUS" {
             Invoke-InboxClassificationOperation `

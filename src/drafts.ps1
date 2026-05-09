@@ -521,6 +521,14 @@ function Invoke-SendDraft {
         Write-Error-Message "Invalid message number"
         return
     }
+
+    $draft = Get-Message `
+        -MessageId $item.Id `
+        -Select "subject,toRecipients,ccRecipients,bccRecipients"
+    if (-not $draft) {
+        Write-Error-Message "Failed to load draft details"
+        return
+    }
     
     # Validate attachments before sending
     $attachments = Get-MessageAttachments -MessageId $item.Id
@@ -539,7 +547,38 @@ function Invoke-SendDraft {
     }
     
     # Confirm
-    if (-not (Confirm-Action "Send this message?$smimeLabel")) {
+    $fromAddress = $Config.CurrentAccount?.Email ?? (Get-CurrentUserEmail)
+    $toAddresses = @(
+        @($draft.toRecipients) |
+            ForEach-Object { $_.emailAddress.address } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    $ccAddresses = @(
+        @($draft.ccRecipients) |
+            ForEach-Object { $_.emailAddress.address } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    $bccAddresses = @(
+        @($draft.bccRecipients) |
+            ForEach-Object { $_.emailAddress.address } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    $recipientParts = @()
+    if ($toAddresses.Count -gt 0) {
+        $recipientParts += "To: $($toAddresses -join ', ')"
+    }
+    if ($ccAddresses.Count -gt 0) {
+        $recipientParts += "Cc: $($ccAddresses -join ', ')"
+    }
+    if ($bccAddresses.Count -gt 0) {
+        $recipientParts += "Bcc: $($bccAddresses -join ', ')"
+    }
+    $recipientSummary = $recipientParts.Count -gt 0 `
+        ? ($recipientParts -join " | ") `
+        : "(no recipients)"
+    $confirmMessage = "Send this message from $fromAddress to $recipientSummary?$smimeLabel"
+
+    if (-not (Confirm-Action $confirmMessage)) {
         Write-Info "Send cancelled"
         return
     }

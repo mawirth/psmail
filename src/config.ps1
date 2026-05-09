@@ -43,6 +43,8 @@ $script:Config = @{
     DataRootPath = Join-Path $PSScriptRoot ".." -AdditionalChildPath "data"
     AccountsDataPath = Join-Path $PSScriptRoot ".." `
         -AdditionalChildPath "data", "accounts"
+    AccountProfilesPath = Join-Path $PSScriptRoot ".." `
+        -AdditionalChildPath "data", "account-profiles.json"
 
     # Editor path
     Editor = "nvim"
@@ -96,7 +98,7 @@ $script:Config = @{
     
     # Attachments configuration
     AttachmentsConfig = @{
-        # Directory for saving attachments (relative to current directory)
+        # Directory for saving attachments. Set per account after login.
         SaveDirectory = "attachments"
         
         # Recipient address separator (for To, CC, BCC fields)
@@ -204,4 +206,5 @@ function Set-AccountStoragePaths {
     $Config.SmimeCachePath  = Join-Path $accountPath "smime-cache.json"
     $Config.SmimeDebugPath  = Join-Path $accountPath "smime-debug.txt"
     $Config.SmimeDraftAssetsPath = Join-Path $accountPath "smime-draft-assets"
+    $Config.AttachmentsConfig.SaveDirectory = Join-Path $accountPath "attachments"
 }

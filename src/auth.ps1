@@ -7,6 +7,10 @@ function Connect-GraphMail {
     Connect to Microsoft Graph for Outlook.com (consumers)
     #>
     
+    param(
+        [string]$TenantId
+    )
+
     # Ensure module is available
     $moduleName = "Microsoft.Graph.Authentication"
     $module = Get-Module -ListAvailable -Name $moduleName `
@@ -28,12 +32,17 @@ function Connect-GraphMail {
         -ForegroundColor $Config.Colors.LoadingMore
     
     try {
-        # Try with consumers tenant first
-        Connect-MgGraph `
-            -Scopes $Config.Scopes `
-            -ContextScope CurrentUser `
-            -NoWelcome `
-            -ErrorAction Stop
+        $params = @{
+            Scopes       = $Config.Scopes
+            ContextScope = "CurrentUser"
+            NoWelcome    = $true
+            ErrorAction  = "Stop"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($TenantId)) {
+            $params.TenantId = $TenantId
+        }
+
+        Connect-MgGraph @params
             
         Write-Success "Successfully connected!"
         

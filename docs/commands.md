@@ -14,6 +14,10 @@
 | `J` | Switch to Junk |
 | `CONTACTS` | Search contacts and copy email address |
 | `SMIME` | Show available S/MIME signing certificates |
+| `ACCOUNT LIST` | Show saved account profiles |
+| `ACCOUNT ADD` | Sign in and save the connected account as a local profile |
+| `ACCOUNT SWITCH <key|email|name>` | Reconnect and load local state for that account |
+| `ACCOUNT REMOVE <key|email|name>` | Remove only the local profile entry |
 | `LOGOUT` | Disconnect and clear session |
 | `Q` | Quit (keeps session active) |
 
@@ -154,6 +158,46 @@ Removes the active filter.
 
 ---
 
+## Account Profiles
+
+psmail stores account profiles in `data/account-profiles.json`. Account data
+such as footers, S/MIME draft flags, and S/MIME cache files live under:
+
+```text
+data/accounts/<account-key>/
+```
+
+Useful commands:
+
+```text
+> ACCOUNT LIST
+> ACCOUNT ADD
+> ACCOUNT SWITCH max@example.com__consumers
+> ACCOUNT REMOVE old@example.com__consumers
+```
+
+`ACCOUNT SWITCH` always reconnects through Microsoft Graph and then uses the
+account actually returned by Graph to choose local paths. If Microsoft's token
+cache or account picker connects a different account than requested, psmail
+warns and loads the actual account's local state instead of reusing the wrong
+cache.
+
+---
+
+## Hidden Diagnostics
+
+`DEBUGSMIME <#>` prints S/MIME-relevant structure for a listed message:
+
+```text
+> DEBUGSMIME 3
+```
+
+It shows selected message headers, Graph attachment metadata, detected S/MIME
+attachment type, and whether raw MIME is available. It is intentionally not
+listed in the in-app menu.
+
+---
+
 ## Email Composition
 
 ### Creating a Draft
@@ -221,7 +265,8 @@ Attachments: ~/Desktop/report.pdf, image.png, C:\path\to\file.zip
 - Supports absolute paths, relative paths, and `~` (home directory)
 - Comma or semicolon separated
 - Files are validated before draft creation
-- Received attachments are saved to the `attachments/` folder
+- Received attachments are saved to the active account folder under
+  `data/accounts/<account-key>/attachments/`
 - Duplicate filenames get numbered: `file (1).pdf`, `file (2).pdf`
 
 ### Contact Search

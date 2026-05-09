@@ -27,6 +27,45 @@ example:
 data/accounts/max@example.com__consumers/footer.txt
 ```
 
+## Account Profiles and Switching
+
+psmail keeps a small global profile list in:
+
+```text
+data/account-profiles.json
+```
+
+Each profile points at one account-specific data folder:
+
+```text
+data/accounts/<account-key>/
+```
+
+The account folder contains local-only helper files such as:
+
+- `footer.txt`
+- `footer.html`
+- `smime-cache.json`
+- `smime-drafts.json`
+- `smime-draft-assets/`
+- `smime-debug.txt`
+- `attachments/`
+
+Use these commands inside psmail:
+
+```text
+ACCOUNT LIST
+ACCOUNT ADD
+ACCOUNT SWITCH <key|email|name>
+ACCOUNT REMOVE <key|email|name>
+```
+
+`ACCOUNT SWITCH` reconnects to Microsoft Graph and then derives local paths
+from the account Graph actually returns. This prevents local state from one
+mailbox being loaded for another mailbox. If Graph connects a different account
+than the requested profile, psmail warns and uses the actual connected account's
+folder.
+
 ### Plain text footer
 
 Create `footer.txt` inside the target account folder. It is appended

@@ -924,6 +924,95 @@ function Write-SmimeDebugDump {
     } catch { }
 }
 
+function Invoke-DebugSmimeMessage {
+    <#
+    .SYNOPSIS
+    Hidden diagnostic command for inspecting S/MIME-relevant message structure.
+    #>
+    param([string]$Argument)
+
+    if ([string]::IsNullOrWhiteSpace($Argument)) {
+        Write-Error-Message "Usage: DEBUGSMIME <message number>"
+        return
+    }
+
+    $index = 0
+    if (-not [int]::TryParse($Argument.Trim(), [ref]$index)) {
+        Write-Error-Message "Usage: DEBUGSMIME <message number>"
+        return
+    }
+
+    $item = Get-StateItem $index
+    if (-not $item) {
+        Write-Error-Message "Invalid message number"
+        return
+    }
+
+    $msg = Get-Message `
+        -MessageId $item.Id `
+        -Select "subject,from,body,bodyPreview,hasAttachments,internetMessageHeaders"
+    if (-not $msg) {
+        Write-Error-Message "Failed to load message"
+        return
+    }
+
+    $contentType = Get-InternetMessageHeaderValue `
+        -Headers $msg.internetMessageHeaders `
+        -HeaderName "Content-Type"
+    $mimeVersion = Get-InternetMessageHeaderValue `
+        -Headers $msg.internetMessageHeaders `
+        -HeaderName "MIME-Version"
+
+    Write-Header "S/MIME Debug"
+    Write-Host ("Index:      {0}" -f $index)
+    Write-Host ("MessageId:  {0}" -f $item.Id)
+    Write-Host ("Subject:    {0}" -f $msg.subject)
+    Write-Host ("From:       {0}" -f $msg.from.emailAddress.address)
+    Write-Host ("MIME:       {0}" -f ($mimeVersion ?? ""))
+    Write-Host ("Content:    {0}" -f ($contentType ?? ""))
+    Write-Host ("Body type:  {0}" -f ($msg.body.contentType ?? ""))
+    Write-Host ("Has attach: {0}" -f ([bool]$msg.hasAttachments))
+    Write-Host ""
+
+    $attachments = @()
+    if ($msg.hasAttachments) {
+        $attachments = @(Get-MessageAttachments -MessageId $item.Id)
+    }
+
+    if ($attachments.Count -eq 0) {
+        Write-Host "Attachments: none"
+    } else {
+        Write-Host "Attachments:"
+        $n = 1
+        foreach ($attachment in $attachments) {
+            $smimeType = $Config.SmimeStatus.None
+            if ($attachment.'@odata.type' -eq '#microsoft.graph.fileAttachment') {
+                $smimeType = Get-SmimeTypeFromAttachment `
+                    -Attachment $attachment `
+                    -MessageId $item.Id
+            }
+            Write-Host ("  {0}. {1}" -f $n, $attachment.name)
+            Write-Host ("     OData:   {0}" -f $attachment.'@odata.type')
+            Write-Host ("     Type:    {0}" -f $attachment.contentType)
+            Write-Host ("     Inline:  {0}" -f ([bool]$attachment.isInline))
+            Write-Host ("     Size:    {0}" -f $attachment.size)
+            Write-Host ("     S/MIME:  {0}" -f $smimeType)
+            $n++
+        }
+    }
+
+    Write-Host ""
+    $rawMime = Get-MessageMime -MessageId $item.Id
+    if ($rawMime) {
+        $rawType = Get-SmimeMimeType -MimeContent $rawMime
+        Write-Host ("Raw MIME available: yes")
+        Write-Host ("Raw MIME S/MIME:    {0}" -f $rawType)
+        Write-Host ("Raw MIME length:    {0}" -f $rawMime.Length)
+    } else {
+        Write-Host "Raw MIME available: no"
+    }
+}
+
 function Get-SmimeStatusFromAttachmentFallback {
     <#
     .SYNOPSIS

@@ -9,12 +9,14 @@ $files = @(
   (Join-Path $repoRoot 'src' -AdditionalChildPath 'mail_read.ps1'),
   (Join-Path $repoRoot 'src' -AdditionalChildPath 'config.ps1'),
   (Join-Path $repoRoot 'src' -AdditionalChildPath 'state.ps1'),
+  (Join-Path $repoRoot 'src' -AdditionalChildPath 'accounts.ps1'),
   (Join-Path $repoRoot 'src' -AdditionalChildPath 'mail_list.ps1'),
   (Join-Path $repoRoot 'src' -AdditionalChildPath 'ui.ps1'),
   (Join-Path $repoRoot 'src' -AdditionalChildPath 'graph.ps1'),
   (Join-Path $repoRoot 'src' -AdditionalChildPath 'util.ps1'),
   (Join-Path $repoRoot 'psmail.ps1'),
-  (Join-Path $repoRoot 'tools' -AdditionalChildPath 'Create-Footer.ps1')
+  (Join-Path $repoRoot 'tools' -AdditionalChildPath 'Create-Footer.ps1'),
+  (Join-Path $repoRoot 'tools' -AdditionalChildPath 'test.ps1')
 )
 
 $allOk = $true

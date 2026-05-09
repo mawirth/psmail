@@ -161,7 +161,7 @@ Opening messages in `Sent` uses the same S/MIME verification/decryption path as 
 
 | Document | Contents |
 |----------|----------|
-| [docs/commands.md](docs/commands.md) | Full command reference, bulk ops, filtering, composition, attachments |
+| [docs/commands.md](docs/commands.md) | Full command reference, bulk ops, filtering, hidden account/debug commands |
 | [docs/smime.md](docs/smime.md) | S/MIME verification, signing, encryption, certificate setup |
 | [docs/configuration.md](docs/configuration.md) | Editor, colors, account-specific footer, authentication, pagination, local state files |
 | [tools/README.md](tools/README.md) | Account-specific footer tool for HTML or plain text |
@@ -174,9 +174,8 @@ psmail.ps1        # entry point
 src/              # modules (config, graph, ui, drafts, smime, …)
 docs/             # detailed documentation
 tools/            # Create-Footer.ps1
-data/             # accounts/<account-key>/footer*.txt/html + local helper state
+data/             # accounts/<account-key>/footer*.txt/html, attachments, helper state
                   # root-level footer files are legacy/manual only
-attachments/      # downloaded attachments (gitignored)
 cert/             # certificate files (gitignored)
 ```
 
