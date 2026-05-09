@@ -40,7 +40,9 @@ function Connect-GraphMail {
         # Show connection info
         $ctx     = Get-MgContext
         $email   = Get-CurrentUserEmail
-        $tenantInfo = if ($ctx.TenantId) { $ctx.TenantId } else { "consumers" }
+        $tenantInfo = [string]::IsNullOrWhiteSpace($ctx.TenantId) `
+            ? "consumers" `
+            : $ctx.TenantId
         Set-AccountStoragePaths -Email $email -TenantId $tenantInfo
         Write-Info ("Account: {0}  Tenant: {1}" -f $email, $tenantInfo)
         

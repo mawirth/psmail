@@ -12,13 +12,13 @@ param(
     [string[]]$AddressLines,
     [string]$CertificationText,
     [string]$CertificationUrl,
-    [string]$Signoff = "Mit freundlichen Grüßen,",
+    [string]$Signoff = "Mit freundlichen Gr`u{00FC}`u{00DF}en,",
     [string]$LogoPath,
     [string]$AccountKey,
     [switch]$TextOnly
 )
 
-. (Join-Path $PSScriptRoot "..\src\config.ps1")
+. (Join-Path $PSScriptRoot ".." -AdditionalChildPath "src", "config.ps1")
 
 $PsmailProjectUrl = "https://github.com/mawirth/psmail"
 $providedFooterDetailParameters = @(
@@ -100,7 +100,7 @@ function Resolve-TargetFolder {
         [string]$EmailAddress
     )
 
-    $dataFolder = Join-Path $PSScriptRoot "..\data"
+    $dataFolder = Join-Path $PSScriptRoot ".." -AdditionalChildPath "data"
     $accountsFolder = Join-Path $dataFolder "accounts"
 
     if ($ExplicitAccountKey) {
@@ -180,7 +180,7 @@ function ConvertTo-LinkHtml {
     }
 
     $safeHref = [System.Net.WebUtility]::HtmlEncode($Href)
-    $safeLabel = ConvertTo-HtmlText $(if (Test-ValuePresent $Label) { $Label } else { $Href })
+    $safeLabel = ConvertTo-HtmlText ((Test-ValuePresent $Label) ? $Label : $Href)
     return "<a href=`"$safeHref`" style=`"color: #1a5fb4; text-decoration: none;`">$safeLabel</a>"
 }
 
@@ -353,13 +353,19 @@ $htmlPath = Join-Path $targetFolder "footer.html"
 
 if ($TextOnly) {
     $textFooter = Build-TextFooter
-    $textFooter | Out-File -FilePath $textPath -Encoding utf8 -NoNewline
+    $textFooter | Out-File `
+        -FilePath $textPath `
+        -Encoding utf8NoBOM `
+        -NoNewline
     if (Test-Path $htmlPath) {
         Remove-Item -Path $htmlPath -Force -ErrorAction SilentlyContinue
     }
 } else {
     $htmlFooter = Build-HtmlFooter
-    $htmlFooter | Out-File -FilePath $htmlPath -Encoding utf8 -NoNewline
+    $htmlFooter | Out-File `
+        -FilePath $htmlPath `
+        -Encoding utf8NoBOM `
+        -NoNewline
 }
 
 Write-Host ""

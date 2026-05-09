@@ -92,19 +92,19 @@ function Save-SmimeCache {
             $toSave[$id] = @{
                 Status     = $e.Status
                 IsEncrypted = [bool]$e.IsEncrypted
-                Subject    = if ($e.Subject)    { $e.Subject    } else { "" }
-                Issuer     = if ($e.Issuer)     { $e.Issuer     } else { "" }
-                ValidUntil = if ($e.ValidUntil) { $e.ValidUntil } else { "" }
-                Error      = if ($e.Error)      { $e.Error      } else { "" }
-                HasUserAttachments = if ($null -ne $e.HasUserAttachments) {
-                    [bool]$e.HasUserAttachments
-                } else {
-                    $null
-                }
+                Subject    = $e.Subject    ?? ""
+                Issuer     = $e.Issuer     ?? ""
+                ValidUntil = $e.ValidUntil ?? ""
+                Error      = $e.Error      ?? ""
+                HasUserAttachments = $null -ne $e.HasUserAttachments `
+                    ? [bool]$e.HasUserAttachments `
+                    : $null
             }
         }
         $toSave | ConvertTo-Json -Depth 3 |
-            Set-Content $Config.SmimeCachePath -Encoding UTF8 -ErrorAction Stop
+            Set-Content $Config.SmimeCachePath `
+                -Encoding utf8NoBOM `
+                -ErrorAction Stop
     } catch { }
 }
 

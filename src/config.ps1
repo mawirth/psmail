@@ -40,27 +40,33 @@ $script:Config = @{
     MinPageSize = 1
     MaxPageSize = 50
     
-    DataRootPath = Join-Path $PSScriptRoot "..\data"
-    AccountsDataPath = Join-Path $PSScriptRoot "..\data\accounts"
+    DataRootPath = Join-Path $PSScriptRoot ".." -AdditionalChildPath "data"
+    AccountsDataPath = Join-Path $PSScriptRoot ".." `
+        -AdditionalChildPath "data", "accounts"
 
     # Editor path
     Editor = "nvim"
     
     # Footer file paths
-    FooterPath = Join-Path $PSScriptRoot "..\data\footer.txt"
-    HtmlFooterPath = Join-Path $PSScriptRoot "..\data\footer.html"
+    FooterPath = Join-Path $PSScriptRoot ".." `
+        -AdditionalChildPath "data", "footer.txt"
+    HtmlFooterPath = Join-Path $PSScriptRoot ".." `
+        -AdditionalChildPath "data", "footer.html"
 
     # Persisted S/MIME draft flags - survives session restarts.
     # Stored locally because Outlook.com consumer accounts do not allow
     # writing custom metadata to Graph messages (categories: 403 Forbidden;
     # HTML comments are stripped server-side).
-    SmimeDraftsPath = Join-Path $PSScriptRoot "..\data\smime-drafts.json"
+    SmimeDraftsPath = Join-Path $PSScriptRoot ".." `
+        -AdditionalChildPath "data", "smime-drafts.json"
 
     # Persisted S/MIME verification status cache - survives session restarts
     # so the E/S list column indicators reappear without reopening each message.
     # Stores Status/Subject/Issuer/ValidUntil per message ID (not Body).
-    SmimeCachePath  = Join-Path $PSScriptRoot "..\data\smime-cache.json"
-    SmimeDebugPath  = Join-Path $PSScriptRoot "..\data\smime-debug.txt"
+    SmimeCachePath  = Join-Path $PSScriptRoot ".." `
+        -AdditionalChildPath "data", "smime-cache.json"
+    SmimeDebugPath  = Join-Path $PSScriptRoot ".." `
+        -AdditionalChildPath "data", "smime-debug.txt"
     CurrentAccount = $null
 
     # HTML body formatting (when sending HTML emails)
@@ -161,17 +167,13 @@ function ConvertTo-AccountStorageKey {
         [string]$TenantId
     )
 
-    $normalizedEmail = if ([string]::IsNullOrWhiteSpace($Email)) {
-        "unknown"
-    } else {
-        $Email.Trim().ToLowerInvariant()
-    }
+    $normalizedEmail = [string]::IsNullOrWhiteSpace($Email) `
+        ? "unknown" `
+        : $Email.Trim().ToLowerInvariant()
 
-    $normalizedTenant = if ([string]::IsNullOrWhiteSpace($TenantId)) {
-        "consumers"
-    } else {
-        $TenantId.Trim().ToLowerInvariant()
-    }
+    $normalizedTenant = [string]::IsNullOrWhiteSpace($TenantId) `
+        ? "consumers" `
+        : $TenantId.Trim().ToLowerInvariant()
 
     $combined = "{0}__{1}" -f $normalizedEmail, $normalizedTenant
     return ([regex]::Replace($combined, '[^a-z0-9@._-]', '_'))

@@ -24,7 +24,7 @@ using **Microsoft Graph API**.
 
 ## Requirements
 
-- **PowerShell 7+** (`pwsh`)
+- **PowerShell 7+** (`pwsh`) is required. Windows PowerShell 5.1 is not supported.
 - **A text editor in PATH** — `nvim` is the default, but `notepad`, `code`, `vim`, or another editor can be configured
 - **Microsoft account** (Outlook.com, Hotmail.com, Microsoft 365)
 - Microsoft.Graph.Authentication module (auto-installed on first run)
@@ -34,7 +34,7 @@ using **Microsoft Graph API**.
 ```powershell
 git clone https://github.com/mawirth/psmail
 cd psmail
-pwsh psmail.ps1
+pwsh .\psmail.ps1
 ```
 
 On first run a browser opens for Microsoft account login. Credentials are
@@ -50,9 +50,10 @@ git clone https://github.com/mawirth/psmail
 cd psmail
 ```
 
-1. Install PowerShell 7 and a text editor if needed. For Neovim on Windows, for example:
+1. Install PowerShell 7 and a text editor if needed. psmail must be started with `pwsh`, not Windows PowerShell 5.1. For Neovim on Windows, for example:
 
 ```powershell
+winget install Microsoft.PowerShell
 winget install Neovim.Neovim
 ```
 
@@ -65,7 +66,7 @@ pwsh .\psmail.ps1
 3. Leave psmail running and open a second console, or quit psmail and return to the repo folder. Then create a footer for your account:
 
 ```powershell
-.\tools\Create-Footer.ps1 `
+pwsh .\tools\Create-Footer.ps1 `
     -Name "Max Mustermann" `
     -Email "max@example.com" `
     -Mobile "+49 170 1234567"
@@ -92,8 +93,8 @@ That is the standard flow. The rest of the commands and optional features are do
 ## Quick Start
 
 ```powershell
-pwsh psmail.ps1          # start
-pwsh psmail.ps1 -Version # show version
+pwsh .\psmail.ps1          # start
+pwsh .\psmail.ps1 -Version # show version
 ```
 
 | Key | Action |

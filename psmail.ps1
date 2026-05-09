@@ -1,5 +1,6 @@
 # psmail.ps1
 # PowerShell Console Mail Client for Outlook.com
+#Requires -Version 7.0
 
 <#
 .SYNOPSIS

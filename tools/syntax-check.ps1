@@ -1,18 +1,20 @@
 #requires -Version 7.0
 
-$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+$repoRoot = [System.IO.Path]::GetFullPath(
+  (Join-Path $PSScriptRoot "..")
+)
 $files = @(
-  (Join-Path $repoRoot 'src\smime.ps1'),
-  (Join-Path $repoRoot 'src\drafts.ps1'),
-  (Join-Path $repoRoot 'src\mail_read.ps1'),
-  (Join-Path $repoRoot 'src\config.ps1'),
-  (Join-Path $repoRoot 'src\state.ps1'),
-  (Join-Path $repoRoot 'src\mail_list.ps1'),
-  (Join-Path $repoRoot 'src\ui.ps1'),
-  (Join-Path $repoRoot 'src\graph.ps1'),
-  (Join-Path $repoRoot 'src\util.ps1'),
+  (Join-Path $repoRoot 'src' -AdditionalChildPath 'smime.ps1'),
+  (Join-Path $repoRoot 'src' -AdditionalChildPath 'drafts.ps1'),
+  (Join-Path $repoRoot 'src' -AdditionalChildPath 'mail_read.ps1'),
+  (Join-Path $repoRoot 'src' -AdditionalChildPath 'config.ps1'),
+  (Join-Path $repoRoot 'src' -AdditionalChildPath 'state.ps1'),
+  (Join-Path $repoRoot 'src' -AdditionalChildPath 'mail_list.ps1'),
+  (Join-Path $repoRoot 'src' -AdditionalChildPath 'ui.ps1'),
+  (Join-Path $repoRoot 'src' -AdditionalChildPath 'graph.ps1'),
+  (Join-Path $repoRoot 'src' -AdditionalChildPath 'util.ps1'),
   (Join-Path $repoRoot 'psmail.ps1'),
-  (Join-Path $repoRoot 'tools\Create-Footer.ps1')
+  (Join-Path $repoRoot 'tools' -AdditionalChildPath 'Create-Footer.ps1')
 )
 
 $allOk = $true

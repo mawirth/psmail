@@ -19,35 +19,16 @@ function Invoke-GraphRequest {
     )
     
     try {
-        if ($Body) {
-            if ($Headers) {
-                return Invoke-MgGraphRequest `
-                    -Method $Method `
-                    -Uri $Uri `
-                    -Body $Body `
-                    -Headers $Headers `
-                    -ErrorAction Stop
-            } else {
-                return Invoke-MgGraphRequest `
-                    -Method $Method `
-                    -Uri $Uri `
-                    -Body $Body `
-                    -ErrorAction Stop
-            }
-        } else {
-            if ($Headers) {
-                return Invoke-MgGraphRequest `
-                    -Method $Method `
-                    -Uri $Uri `
-                    -Headers $Headers `
-                    -ErrorAction Stop
-            } else {
-                return Invoke-MgGraphRequest `
-                    -Method $Method `
-                    -Uri $Uri `
-                    -ErrorAction Stop
-            }
+        # Splatting: only pass optional params when actually set
+        $params = @{
+            Method      = $Method
+            Uri         = $Uri
+            ErrorAction = 'Stop'
         }
+        if ($Body)    { $params.Body    = $Body    }
+        if ($Headers) { $params.Headers = $Headers }
+
+        return Invoke-MgGraphRequest @params
     } catch {
         Write-Error-Message ("Graph API error: {0}" `
             -f $_.Exception.Message)

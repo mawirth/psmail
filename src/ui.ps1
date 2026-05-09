@@ -16,7 +16,7 @@ function Get-ColumnWidths {
     # Column widths (derived from actual column headers and formatting)
     # Index: dynamic width based on highest loaded list index + trailing space
     # Unread: "* " = 2 chars
-    # S/MIME (inbox only): "✔ " = 2 chars
+    # S/MIME (inbox only): icon plus space = 2 chars
     # Attachment: "*  " = 3 chars
     # Date: "yyyy-MM-dd HH:mm  " = 18 chars
     # From/To: "{0,-18} " = 19 chars
@@ -120,30 +120,22 @@ function Render-MessageRow {
     
     # E (encrypted) and S (signing) icons - inbox only
     if ($View -eq "inbox") {
-        $encIcon   = if ($Item.IsEncrypted -or
-            $Item.SmimeStatus -eq $Config.SmimeStatus.Encrypted) {
-            "E"
-        } else {
-            " "
-        }
+        $encIcon   = ($Item.IsEncrypted -or
+            $Item.SmimeStatus -eq $Config.SmimeStatus.Encrypted) ? "E" : " "
         $smimeIcon = Get-SmimeIcon $Item.SmimeStatus
         Write-Host "$encIcon " -NoNewline
         Write-Host "$smimeIcon " -NoNewline
     }
     
     # Attachment indicator
-    $attachIcon = if ($Item.HasAttachments) { "*" } else { " " }
+    $attachIcon = $Item.HasAttachments ? "*" : " "
     Write-Host "$attachIcon  " -NoNewline
     
     # Date
     Write-Host "$date  " -NoNewline
     
     # From/To
-    $addr = if ($View -eq "sentitems" -or $View -eq "drafts") { 
-        $Item.ToAddress 
-    } else { 
-        $Item.FromAddress 
-    }
+    $addr = ($View -eq "sentitems" -or $View -eq "drafts") ? $Item.ToAddress : $Item.FromAddress
     $addr = Remove-TerminalControlSequences $addr
     $addrTrunc = Truncate-String $addr $ColumnWidths.Address
     Write-Host ("{0,-18} " -f $addrTrunc) -NoNewline
@@ -163,17 +155,13 @@ function Get-ListLayoutInfo {
     $consoleHeight = $Host.UI.RawUI.WindowSize.Height
     if ($consoleHeight -le 0) { $consoleHeight = 30 }
 
-    $filterLines = if ((Get-Filter) -or (Get-InboxClassification)) { 2 } else { 0 }
+    $filterLines = ((Get-Filter) -or (Get-InboxClassification)) ? 2 : 0
 
     $headerLines = 3      # Write-Header: blank + title + separator
     $listHeaderLines = 1  # "# U ..." header
     $paginationLines = 1  # fixed slot, with or without [M] message
     # Inbox has two extra action lines for Focused Inbox training.
-    $menuLines = if ($global:State.View -eq $Config.Folders.Inbox) {
-        10
-    } else {
-        8
-    }
+    $menuLines = $global:State.View -eq $Config.Folders.Inbox ? 10 : 8
     $promptLines = 1      # Read-Command prompt
 
     $reservedLines = $headerLines + $filterLines + $listHeaderLines +
@@ -372,11 +360,7 @@ function Show-MessageList {
 
     # Fixed pagination/status slot to keep the layout height stable
     if ($global:State.StatusMessage) {
-        $statusColor = if ($global:State.StatusColor) {
-            $global:State.StatusColor
-        } else {
-            "Info"
-        }
+        $statusColor = $global:State.StatusColor ?? "Info"
         Write-Host $global:State.StatusMessage `
             -ForegroundColor $Config.Colors.$statusColor
         Clear-StatusMessage

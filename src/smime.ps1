@@ -1747,7 +1747,9 @@ function Save-SmimeDrafts {
     #>
     try {
         $global:State.SmimeDrafts | ConvertTo-Json -Depth 3 | `
-            Set-Content $Config.SmimeDraftsPath -Encoding UTF8 -ErrorAction Stop
+            Set-Content $Config.SmimeDraftsPath `
+                -Encoding utf8NoBOM `
+                -ErrorAction Stop
     } catch { }
 }
 

@@ -15,7 +15,7 @@ function Truncate-String {
         return $String
     }
     
-    return ($String.Substring(0, $MaxLength - 1) + "…")
+    return ($String.Substring(0, $MaxLength - 1) + "`u{2026}")
 }
 
 function Remove-TerminalControlSequences {
@@ -51,12 +51,13 @@ function Format-DateOnly {
 function Get-SmimeIcon {
     # Returns signing-only status icon (S column).
     # Encrypted messages show in the dedicated E column, not here.
+    # PS7 Unicode escape syntax avoids file-encoding issues.
     param([string]$Status)
-    
+
     switch ($Status) {
-        "SignedTrusted"   { return "✔" }
+        "SignedTrusted"   { return "`u{2714}" }
         "SignedUntrusted" { return "~" }
-        "SignedInvalid"   { return "✖" }
+        "SignedInvalid"   { return "`u{2716}" }
         default           { return " " }
     }
 }
@@ -84,8 +85,7 @@ function ConvertTo-RecipientArray {
 
 function Get-UnreadIcon {
     param([bool]$IsUnread)
-    
-    if ($IsUnread) { return "*" } else { return " " }
+    return $IsUnread ? "*" : " "
 }
 
 function Write-Header {
@@ -198,10 +198,7 @@ function Parse-IndexRange {
                 }
                 
                 if ($start -gt $end) {
-                    # Swap if reversed
-                    $temp = $start
-                    $start = $end
-                    $end = $temp
+                    $start, $end = $end, $start  # destructuring swap (PS7+)
                 }
                 
                 # Add all indices in range
@@ -228,10 +225,7 @@ function Parse-IndexRange {
         }
         
         if ($start -gt $end) {
-            # Swap if user entered reversed range
-            $temp = $start
-            $start = $end
-            $end = $temp
+            $start, $end = $end, $start  # destructuring swap (PS7+)
         }
         
         # Generate array of indices
@@ -246,8 +240,8 @@ function Parse-IndexRange {
         return $null
     }
     
-    # Remove duplicates and sort
-    $uniqueIndices = $allIndices | Select-Object -Unique | Sort-Object
+    # Remove duplicates and sort (Sort-Object -Stable: PS7 stable sort)
+    $uniqueIndices = $allIndices | Select-Object -Unique | Sort-Object -Stable
     
     return @($uniqueIndices)
 }
@@ -294,11 +288,7 @@ function Format-WordWrap {
         }
         
         # Check if adding this word would exceed width
-        $testLine = if ($currentLine.Length -eq 0) {
-            $word
-        } else {
-            "$currentLine $word"
-        }
+        $testLine = $currentLine.Length -eq 0 ? $word : "$currentLine $word"
         
         if ($testLine.Length -le $Width) {
             # Word fits, add it
