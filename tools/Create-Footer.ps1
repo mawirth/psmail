@@ -245,7 +245,7 @@ function Build-TextFooter {
     }
 
     $lines.Add("")
-    $lines.Add("Sent by psmail: $PsmailProjectUrl")
+    $lines.Add("Sent bei psmail: $PsmailProjectUrl")
 
     return (($lines | Where-Object { $_ -ne $null }) -join "`r`n").TrimEnd()
 }
@@ -315,7 +315,7 @@ function Build-HtmlFooter {
         }
     }
 
-    $psmailLine = ConvertTo-LinkHtml -Href $PsmailProjectUrl -Label "Sent by psmail"
+    $psmailLine = ConvertTo-LinkHtml -Href $PsmailProjectUrl -Label "Sent bei psmail"
     $psmailHtml = "<p style=`"margin: 12px 0 0 0; color: #666; font-size: 0.9em;`">$psmailLine</p>"
 
     $signoffHtml = if (Test-ValuePresent $Signoff) {

@@ -35,11 +35,11 @@ Max Mustermann
 max@example.com
 Mobil: +49 170 1234567
 
-Sent by psmail: https://github.com/mawirth/psmail
+Sent bei psmail: https://github.com/mawirth/psmail
 ```
 
 The matching HTML footer uses the same content with clickable links where
-possible, including the final `Sent by psmail` GitHub link.
+possible, including the final `Sent bei psmail` GitHub link.
 
 ## Usage
 
