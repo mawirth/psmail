@@ -627,6 +627,35 @@ function Get-MimeReadableText {
     return $null
 }
 
+function Get-GraphObjectValue {
+    param(
+        [Parameter(Mandatory)]$Object,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        foreach ($key in @($Name, $Name.Substring(0, 1).ToUpper() + $Name.Substring(1))) {
+            if ($Object.Contains($key)) { return $Object[$key] }
+        }
+    }
+
+    $prop = $Object.PSObject.Properties |
+        Where-Object { $_.Name -ieq $Name } |
+        Select-Object -First 1
+    if ($prop) { return $prop.Value }
+
+    $additional = $Object.PSObject.Properties |
+        Where-Object { $_.Name -ieq "AdditionalProperties" } |
+        Select-Object -First 1
+    if ($additional -and $additional.Value -is [System.Collections.IDictionary]) {
+        foreach ($key in @($Name, $Name.Substring(0, 1).ToUpper() + $Name.Substring(1))) {
+            if ($additional.Value.Contains($key)) { return $additional.Value[$key] }
+        }
+    }
+
+    return $null
+}
+
 function Get-SmimeTypeFromAttachment {
     <#
     .SYNOPSIS
@@ -639,18 +668,11 @@ function Get-SmimeTypeFromAttachment {
         [string]$MessageId = $null
     )
 
-    $name = ""
-    if ($Attachment.PSObject.Properties.Name -contains 'name') {
-        $name = "$($Attachment.name)"
-    }
+    $name = "$(Get-GraphObjectValue -Object $Attachment -Name 'name')"
     $nameLower = $name.ToLower()
     $extLower = [System.IO.Path]::GetExtension($nameLower)
 
-    $contentType = ""
-    if ($Attachment.PSObject.Properties.Name -contains 'contentType' -and
-        $Attachment.contentType) {
-        $contentType = "$($Attachment.contentType)".ToLower()
-    }
+    $contentType = "$(Get-GraphObjectValue -Object $Attachment -Name 'contentType')".ToLower()
 
     if ($nameLower -eq 'smime.p7s' -or
         $extLower -eq '.p7s' -or
@@ -674,17 +696,22 @@ function Get-SmimeTypeFromAttachment {
     }
 
     $contentBytesB64 = $null
-    if ($Attachment.PSObject.Properties.Name -contains 'contentBytes' -and
-        $Attachment.contentBytes) {
-        $contentBytesB64 = $Attachment.contentBytes
+    $attachmentContentBytes = Get-GraphObjectValue -Object $Attachment -Name 'contentBytes'
+    $attachmentId = Get-GraphObjectValue -Object $Attachment -Name 'id'
+    if ($attachmentContentBytes) {
+        $contentBytesB64 = $attachmentContentBytes
     } elseif ($MessageId -and
-              $Attachment.PSObject.Properties.Name -contains 'id' -and
-              $Attachment.id) {
+              $attachmentId) {
         try {
             $fullAttachment = Get-Attachment `
-                -MessageId $MessageId -AttachmentId $Attachment.id
-            if ($fullAttachment -and $fullAttachment.contentBytes) {
-                $contentBytesB64 = $fullAttachment.contentBytes
+                -MessageId $MessageId -AttachmentId $attachmentId
+            $fullContentBytes = if ($fullAttachment) {
+                Get-GraphObjectValue -Object $fullAttachment -Name 'contentBytes'
+            } else {
+                $null
+            }
+            if ($fullContentBytes) {
+                $contentBytesB64 = $fullContentBytes
             }
         } catch { }
     }
@@ -756,18 +783,11 @@ function Test-IsExplicitSignatureAttachment {
     #>
     param([Parameter(Mandatory)]$Attachment)
 
-    $name = ""
-    if ($Attachment.PSObject.Properties.Name -contains 'name') {
-        $name = "$($Attachment.name)"
-    }
+    $name = "$(Get-GraphObjectValue -Object $Attachment -Name 'name')"
     $nameLower = $name.ToLower()
     $extLower = [System.IO.Path]::GetExtension($nameLower)
 
-    $contentType = ""
-    if ($Attachment.PSObject.Properties.Name -contains 'contentType' -and
-        $Attachment.contentType) {
-        $contentType = "$($Attachment.contentType)".ToLower()
-    }
+    $contentType = "$(Get-GraphObjectValue -Object $Attachment -Name 'contentType')".ToLower()
 
     return (
         $nameLower -eq 'smime.p7s' -or
@@ -1042,16 +1062,21 @@ function Get-SmimeStatusFromAttachmentFallback {
     }
 
     $fullAttachment = $Attachment
-    if ((-not $Attachment.PSObject.Properties.Name.Contains('contentBytes')) -or
-        -not $Attachment.contentBytes) {
-        $fullAttachment = Get-Attachment -MessageId $MessageId -AttachmentId $Attachment.id
+    $contentBytesB64 = Get-GraphObjectValue -Object $fullAttachment -Name 'contentBytes'
+    if (-not $contentBytesB64) {
+        $attachmentId = Get-GraphObjectValue -Object $Attachment -Name 'id'
+        $fullAttachment = Get-Attachment -MessageId $MessageId -AttachmentId $attachmentId
+        if ($fullAttachment) {
+            $contentBytesB64 = Get-GraphObjectValue `
+                -Object $fullAttachment -Name 'contentBytes'
+        }
     }
-    if (-not $fullAttachment -or -not $fullAttachment.contentBytes) {
+    if (-not $fullAttachment -or -not $contentBytesB64) {
         return $none
     }
 
     try {
-        [byte[]]$sigBytes = [Convert]::FromBase64String($fullAttachment.contentBytes)
+        [byte[]]$sigBytes = [Convert]::FromBase64String($contentBytesB64)
         [byte[]]$normalizedSigBytes = $sigBytes
         $rawText = [System.Text.Encoding]::ASCII.GetString($sigBytes)
         $embeddedMimeType = Get-SmimeMimeType -MimeContent $rawText
@@ -1090,7 +1115,27 @@ function Get-SmimeStatusFromAttachmentFallback {
         if ($attachmentType -eq "OpaqueSign") {
             $normalizedSigBytes = ConvertTo-NormalizedCmsBytes -Bytes $sigBytes -Kind Signed
             $result = Invoke-CmsVerify -SignatureBytes $normalizedSigBytes -IsDetached $false
-            $result['Body'] = if ($Message.body.content) { $Message.body.content } else { $null }
+            $bodyFromCms = $null
+            try {
+                $signedCms = New-Object System.Security.Cryptography.Pkcs.SignedCms
+                $signedCms.Decode([byte[]]$normalizedSigBytes)
+                $innerBytes = $signedCms.ContentInfo.Content
+                if ($innerBytes -and $innerBytes.Length -gt 0) {
+                    $innerMime = [System.Text.Encoding]::UTF8.GetString($innerBytes)
+                    $bodyFromCms = Get-MimeReadableText -MimeContent $innerMime
+                }
+            } catch { }
+            $result['Body'] = if (-not [string]::IsNullOrWhiteSpace($bodyFromCms)) {
+                $bodyFromCms
+            } elseif ($Message.body.content) {
+                if ($Message.body.contentType -eq "HTML") {
+                    Convert-HtmlToText $Message.body.content
+                } else {
+                    $Message.body.content
+                }
+            } else {
+                $null
+            }
             if ($result.Status -eq $Config.SmimeStatus.SignedInvalid -and
                 $result.Error -match 'Invalid cryptographic message type') {
                 try {
@@ -1119,8 +1164,8 @@ function Get-SmimeStatusFromAttachmentFallback {
                 } else { "" }
                 Write-SmimeDebugDump `
                     -MessageId $MessageId `
-                    -AttachmentName $fullAttachment.name `
-                    -AttachmentContentType $fullAttachment.contentType `
+                    -AttachmentName (Get-GraphObjectValue -Object $fullAttachment -Name 'name') `
+                    -AttachmentContentType (Get-GraphObjectValue -Object $fullAttachment -Name 'contentType') `
                     -AttachmentType $attachmentType `
                     -BodyContentType $Message.body.contentType `
                     -BodyPreview $bodyPreview `
@@ -1160,8 +1205,8 @@ function Get-SmimeStatusFromAttachmentFallback {
                 Replace("`r", "<CR>").Replace("`n", "<LF>")
             Write-SmimeDebugDump `
                 -MessageId $MessageId `
-                -AttachmentName $fullAttachment.name `
-                -AttachmentContentType $fullAttachment.contentType `
+                -AttachmentName (Get-GraphObjectValue -Object $fullAttachment -Name 'name') `
+                -AttachmentContentType (Get-GraphObjectValue -Object $fullAttachment -Name 'contentType') `
                 -AttachmentType $attachmentType `
                 -BodyContentType $Message.body.contentType `
                 -BodyPreview $bodyPreview `
@@ -1182,8 +1227,8 @@ function Get-SmimeStatusFromAttachmentFallback {
         } else { "" }
         Write-SmimeDebugDump `
             -MessageId $MessageId `
-            -AttachmentName $fullAttachment.name `
-            -AttachmentContentType $fullAttachment.contentType `
+            -AttachmentName (Get-GraphObjectValue -Object $fullAttachment -Name 'name') `
+            -AttachmentContentType (Get-GraphObjectValue -Object $fullAttachment -Name 'contentType') `
             -AttachmentType $attachmentType `
             -BodyContentType $Message.body.contentType `
             -BodyPreview $bodyPreview `
@@ -2173,13 +2218,17 @@ function Protect-MessageSmime {
         if ($bodyText.IndexOf($Config.EmailTemplates.OriginalMessageHeader) -ge 0) {
             $footerResult = Apply-DraftFooterBeforeQuotedSection `
                 -BodyText $bodyText `
-                -QuotedSectionHeader $Config.EmailTemplates.OriginalMessageHeader
+                -QuotedSectionHeader $Config.EmailTemplates.OriginalMessageHeader `
+                -Enabled $localEncryptedDraft.Signature
         } elseif ($bodyText.IndexOf($Config.EmailTemplates.ForwardedMessageHeader) -ge 0) {
             $footerResult = Apply-DraftFooterBeforeQuotedSection `
                 -BodyText $bodyText `
-                -QuotedSectionHeader $Config.EmailTemplates.ForwardedMessageHeader
+                -QuotedSectionHeader $Config.EmailTemplates.ForwardedMessageHeader `
+                -Enabled $localEncryptedDraft.Signature
         } else {
-            $footerResult = Apply-DraftFooter $bodyText
+            $footerResult = Apply-DraftFooter `
+                -BodyText $bodyText `
+                -Enabled $localEncryptedDraft.Signature
         }
         $bodyText = $footerResult.Body
         $bodyContentType = if ($footerResult.ContentType -eq "HTML") {

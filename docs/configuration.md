@@ -68,15 +68,15 @@ folder.
 
 ### Plain text footer
 
-Create `footer.txt` inside the target account folder. It is appended
-automatically to all new drafts, replies, and forwards.
+Create `footer.txt` inside the target account folder. It is appended to new
+drafts, replies, and forwards when the draft header has `Signature: yes`.
 
 ### HTML footer with logo
 
-When `footer.html` exists in the active account folder, all emails are sent as
-HTML and the footer is appended. Replies and forwards also keep the quoted or
-forwarded original block as HTML line breaks, so header lines and paragraph
-breaks stay readable.
+When `footer.html` exists in the active account folder and `Signature: yes` is
+set, psmail sends the draft as HTML and appends that footer. Replies and
+forwards also keep the quoted or forwarded original block as HTML line breaks,
+so header lines and paragraph breaks stay readable.
 
 `Create-Footer.ps1` writes `footer.html` by default. With `-TextOnly`, it
 writes `footer.txt` instead and removes an existing `footer.html` for that

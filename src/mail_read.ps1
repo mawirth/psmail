@@ -276,25 +276,30 @@ function Invoke-OpenMessage {
         }
     }
 
-    # For S/MIME messages, body.content is often empty (text is embedded in
-    # the MIME structure). Fallback chain:
+    # For S/MIME messages, body.content is often empty. Depending on how Graph
+    # normalized the message, the text can be in an S/MIME container or in a
+    # normal raw-MIME text part next to a structural S/MIME attachment.
+    # Fallback chain:
     #   1. $smimeResult.Body  - from live verification (not persisted in cache)
-    #   2. Lazy extraction    - fetch raw MIME and decrypt/extract if Body is null
+    #   2. Lazy extraction    - fetch raw MIME and extract if Body is null
     #      (handles the case where result came from persistent cache with Body=null)
     #   3. bodyPreview        - Graph text snippet (~255 chars)
     if ([string]::IsNullOrWhiteSpace($body)) {
         if ($smimeResult -and $smimeResult.Body) {
             $body = $smimeResult.Body
-        } elseif ($smimeResult -and
-                  $smimeResult.Status -ne $Config.SmimeStatus.None) {
-            # Body not cached — try live extraction via raw MIME
+        } else {
+            # Body not cached or not classified as S/MIME: try raw MIME.
             $rawMime = Get-MessageMime -MessageId $item.Id
             if ($rawMime) {
                 $mimeType = Get-SmimeMimeType -MimeContent $rawMime
                 if ($mimeType -ne "None") {
                     $body = Get-SmimePlaintextBody `
                         -MimeContent $rawMime -SmimeType $mimeType
-                    if ($body) { $smimeResult['Body'] = $body }  # session cache
+                } else {
+                    $body = Get-MimeReadableText -MimeContent $rawMime
+                }
+                if ($body -and $smimeResult) {
+                    $smimeResult['Body'] = $body  # session cache
                 }
             }
         }
@@ -435,6 +440,7 @@ function Invoke-ReplyMessage {
 To: $toList
 Subject: $subject
 Attachments: 
+Signature: no
 Sign: no
 Encrypt: no
 
@@ -491,7 +497,8 @@ $quotedBody
     } else {
         $footerResult  = Apply-DraftFooterBeforeQuotedSection `
             -BodyText $parsed.Body `
-            -QuotedSectionHeader $Config.EmailTemplates.OriginalMessageHeader
+            -QuotedSectionHeader $Config.EmailTemplates.OriginalMessageHeader `
+            -Enabled $parsed.Signature
 
         # Create draft
         $draft = New-DraftMessage `
@@ -580,6 +587,7 @@ function Invoke-ForwardMessage {
 To: 
 Subject: $subject
 Attachments: 
+Signature: no
 Sign: no
 Encrypt: no
 
@@ -636,7 +644,8 @@ $forwardedBody
     } else {
         $footerResult = Apply-DraftFooterBeforeQuotedSection `
             -BodyText $parsed.Body `
-            -QuotedSectionHeader $Config.EmailTemplates.ForwardedMessageHeader
+            -QuotedSectionHeader $Config.EmailTemplates.ForwardedMessageHeader `
+            -Enabled $parsed.Signature
 
         # Create draft
         $draft = New-DraftMessage `

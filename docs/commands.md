@@ -209,6 +209,7 @@ listed in the in-app menu.
 To: 
 Subject: 
 Attachments: 
+Signature: no
 Sign: no
 Encrypt: no
 
@@ -219,8 +220,8 @@ Encrypt: no
 3. Fill in the fields, write the body below `---`
 4. Save and quit: `:wq`
 
-The footer from the active account folder
-(`data/accounts/<account-key>/footer.txt` or `footer.html`) is appended automatically.
+Set `Signature: yes` to append the footer from the active account folder
+(`data/accounts/<account-key>/footer.txt` or `footer.html`).
 Attachments are validated and uploaded after saving.
 
 If `Encrypt: yes` is set, psmail keeps the body and attachment paths locally on

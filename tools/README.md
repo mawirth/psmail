@@ -18,7 +18,8 @@ By default the tool writes `footer.html`.
 With `-TextOnly`, it writes `footer.txt` instead and removes an existing
 `footer.html` in that account folder so the text footer is actually used.
 
-If `footer.html` exists, psmail sends the draft as HTML and appends that footer.
+If `footer.html` exists and the draft header has `Signature: yes`, psmail sends
+the draft as HTML and appends that footer.
 
 For replies and forwards, psmail keeps the quoted original section as HTML with
 preserved line breaks, so `--- Original Message ---` / `--- Forwarded Message ---`
@@ -35,11 +36,11 @@ Max Mustermann
 max@example.com
 Mobil: +49 170 1234567
 
-Sent bei psmail: https://github.com/mawirth/psmail
+Sent by psmail: https://github.com/mawirth/psmail
 ```
 
 The matching HTML footer uses the same content with clickable links where
-possible, including the final `Sent bei psmail` GitHub link.
+possible, including the final `Sent by psmail` GitHub link.
 
 ## Usage
 

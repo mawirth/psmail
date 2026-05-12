@@ -15,6 +15,11 @@ Core characteristics:
 
 Maintain existing code patterns unless there is a clear reason to refactor.
 
+Before broad repository searches, verify the actual shell location. Do not rely
+on `workdir` alone: constrain `rg`/file enumeration to the repository root or
+specific repo files/includes so searches never spill into parent or unrelated
+directories.
+
 Prefer current repo behavior over stale notes:
 - filters persist across folder changes until explicitly cleared
 - `PURGE` only belongs in Deleted

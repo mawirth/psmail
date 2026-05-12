@@ -41,6 +41,7 @@ function Get-LocalEncryptedDraftData {
         Sign        = [bool]$entry.Sign
         Encrypt     = [bool]$entry.Encrypt
         LocalOnly   = [bool]$entry.LocalOnly
+        Signature   = [bool]$entry.Signature
         To          = if ($entry.To) { "$($entry.To)" } else { "" }
         Subject     = if ($entry.Subject) { "$($entry.Subject)" } else { "" }
         Body        = if ($entry.Body) { "$($entry.Body)" } else { "" }
@@ -55,6 +56,7 @@ function Set-LocalEncryptedDraftData {
         [string]$Subject = "",
         [string]$Body = "",
         [array]$Attachments = @(),
+        [bool]$Signature = $false,
         [bool]$Sign = $false,
         [bool]$Encrypt = $true
     )
@@ -69,6 +71,7 @@ function Set-LocalEncryptedDraftData {
         Subject     = $Subject
         Body        = $Body
         Attachments = @($Attachments)
+        Signature   = $Signature
     }
     Save-SmimeDrafts
 }
@@ -86,6 +89,73 @@ function Clear-LocalEncryptedDraftData {
         Encrypt = $Encrypt
     }
     Save-SmimeDrafts
+}
+
+function Get-DraftRecipientAddress {
+    param($Recipient)
+
+    if (-not $Recipient) { return "" }
+    if ($Recipient -is [string]) { return $Recipient.Trim() }
+
+    $emailAddress = $null
+    if ($Recipient -is [System.Collections.IDictionary]) {
+        if ($Recipient.Contains("emailAddress")) {
+            $emailAddress = $Recipient["emailAddress"]
+        } elseif ($Recipient.Contains("EmailAddress")) {
+            $emailAddress = $Recipient["EmailAddress"]
+        }
+    } elseif ($Recipient.PSObject.Properties["emailAddress"]) {
+        $emailAddress = $Recipient.emailAddress
+    } elseif ($Recipient.PSObject.Properties["EmailAddress"]) {
+        $emailAddress = $Recipient.EmailAddress
+    } elseif ($Recipient.PSObject.Properties["AdditionalProperties"] -and
+        $Recipient.AdditionalProperties) {
+        $props = $Recipient.AdditionalProperties
+        if ($props -is [System.Collections.IDictionary]) {
+            if ($props.Contains("emailAddress")) {
+                $emailAddress = $props["emailAddress"]
+            } elseif ($props.Contains("EmailAddress")) {
+                $emailAddress = $props["EmailAddress"]
+            }
+        }
+    }
+
+    if (-not $emailAddress) { return "" }
+    if ($emailAddress -is [string]) { return $emailAddress.Trim() }
+
+    $address = $null
+    if ($emailAddress -is [System.Collections.IDictionary]) {
+        if ($emailAddress.Contains("address")) {
+            $address = $emailAddress["address"]
+        } elseif ($emailAddress.Contains("Address")) {
+            $address = $emailAddress["Address"]
+        }
+    } elseif ($emailAddress.PSObject.Properties["address"]) {
+        $address = $emailAddress.address
+    } elseif ($emailAddress.PSObject.Properties["Address"]) {
+        $address = $emailAddress.Address
+    } elseif ($emailAddress.PSObject.Properties["AdditionalProperties"] -and
+        $emailAddress.AdditionalProperties) {
+        $props = $emailAddress.AdditionalProperties
+        if ($props -is [System.Collections.IDictionary]) {
+            if ($props.Contains("address")) {
+                $address = $props["address"]
+            } elseif ($props.Contains("Address")) {
+                $address = $props["Address"]
+            }
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($address)) { return "" }
+    return "$address".Trim()
+}
+
+function Get-DraftSenderAddress {
+    $accountEmail = $Config.CurrentAccount?.Email
+    if (-not [string]::IsNullOrWhiteSpace($accountEmail)) {
+        return "$accountEmail".Trim()
+    }
+    return (Get-CurrentUserEmail)
 }
 
 function Update-EncryptedDraftPlaceholder {
@@ -182,6 +252,7 @@ function Save-EncryptedDraftLocally {
         -Subject $ParsedDraft.Subject `
         -Body $ParsedDraft.Body `
         -Attachments $attachmentPaths `
+        -Signature $ParsedDraft.Signature `
         -Sign $ParsedDraft.Sign `
         -Encrypt $ParsedDraft.Encrypt
 
@@ -236,6 +307,7 @@ function Invoke-NewDraft {
 To: 
 Subject: 
 Attachments: 
+Signature: no
 Sign: no
 Encrypt: no
 
@@ -280,7 +352,9 @@ $separator
             -ToRecipients $toRecipients `
             -ContentType  "Text"
     } else {
-        $footerResult  = Apply-DraftFooter $parsed.Body
+        $footerResult  = Apply-DraftFooter `
+            -BodyText $parsed.Body `
+            -Enabled $parsed.Signature
         $contentType   = $footerResult.ContentType
         $body          = $footerResult.Body
 
@@ -360,12 +434,14 @@ function Invoke-EditDraft {
     $bodyContent = ""
     $subjectLine = $draft.subject
     $toListForEdit = $toList
+    $signatureVal = "no"
     $existingAttachments = @()
 
     if ($localEncryptedDraft) {
         $bodyContent = $localEncryptedDraft.Body
         $subjectLine = $localEncryptedDraft.Subject
         $toListForEdit = $localEncryptedDraft.To
+        $signatureVal = if ($localEncryptedDraft.Signature) { "yes" } else { "no" }
         if ($localEncryptedDraft.Attachments.Count -gt 0) {
             $attachmentList = $localEncryptedDraft.Attachments -join ", "
         }
@@ -394,6 +470,7 @@ function Invoke-EditDraft {
 To: $toListForEdit
 Subject: $subjectLine
 Attachments: $attachmentList
+Signature: $signatureVal
 Sign: $signVal
 Encrypt: $encryptVal
 
@@ -459,7 +536,9 @@ $bodyContent
         $body = $parsed.Body
 
         if ($localEncryptedDraft) {
-            $footerResult = Apply-DraftFooter $parsed.Body
+            $footerResult = Apply-DraftFooter `
+                -BodyText $parsed.Body `
+                -Enabled $parsed.Signature
             $contentType = $footerResult.ContentType
             $body = $footerResult.Body
         } elseif ($wasHtml) {
@@ -467,9 +546,9 @@ $bodyContent
             $contentType = "HTML"
             $body = Convert-TextToHtml $body
 
-            # Re-append footer if it exists
+            # Re-append footer only when requested for this edit.
             $footer = Get-Footer
-            if ($footer -and $footer.Type -eq "HTML") {
+            if ($parsed.Signature -and $footer -and $footer.Type -eq "HTML") {
                 $body += "`n" + $footer.Content
             }
         }
@@ -547,20 +626,20 @@ function Invoke-SendDraft {
     }
     
     # Confirm
-    $fromAddress = $Config.CurrentAccount?.Email ?? (Get-CurrentUserEmail)
+    $fromAddress = Get-DraftSenderAddress
     $toAddresses = @(
         @($draft.toRecipients) |
-            ForEach-Object { $_.emailAddress.address } |
+            ForEach-Object { Get-DraftRecipientAddress $_ } |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     )
     $ccAddresses = @(
         @($draft.ccRecipients) |
-            ForEach-Object { $_.emailAddress.address } |
+            ForEach-Object { Get-DraftRecipientAddress $_ } |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     )
     $bccAddresses = @(
         @($draft.bccRecipients) |
-            ForEach-Object { $_.emailAddress.address } |
+            ForEach-Object { Get-DraftRecipientAddress $_ } |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     )
     $recipientParts = @()
@@ -576,7 +655,14 @@ function Invoke-SendDraft {
     $recipientSummary = $recipientParts.Count -gt 0 `
         ? ($recipientParts -join " | ") `
         : "(no recipients)"
-    $confirmMessage = "Send this message from $fromAddress to $recipientSummary?$smimeLabel"
+    $confirmRecipient = if ($ccAddresses.Count -eq 0 -and
+        $bccAddresses.Count -eq 0 -and
+        $toAddresses.Count -gt 0) {
+        $toAddresses -join ", "
+    } else {
+        $recipientSummary
+    }
+    $confirmMessage = "Send this message from $fromAddress to $confirmRecipient$smimeLabel"
 
     if (-not (Confirm-Action $confirmMessage)) {
         Write-Info "Send cancelled"
@@ -643,6 +729,7 @@ function Parse-DraftContent {
     $to          = ""
     $subject     = ""
     $attachments = @()
+    $signatureStr = "no"
     $signStr     = "no"
     $encryptStr  = "no"
     
@@ -651,6 +738,8 @@ function Parse-DraftContent {
             $to = $matches[1].Trim()
         } elseif ($line -match '^Subject:\s*(.*)$') {
             $subject = $matches[1].Trim()
+        } elseif ($line -match '^Signature:\s*(.*)$') {
+            $signatureStr = $matches[1].Trim()
         } elseif ($line -match '^Sign:\s*(.*)$') {
             $signStr = $matches[1].Trim()
         } elseif ($line -match '^Encrypt:\s*(.*)$') {
@@ -674,14 +763,16 @@ function Parse-DraftContent {
         }
     }
     
-    $sign    = ($signStr.ToLower()    -eq "yes" -or $signStr.ToLower()    -eq "true")
-    $encrypt = ($encryptStr.ToLower() -eq "yes" -or $encryptStr.ToLower() -eq "true")
+    $signature = ($signatureStr.ToLower() -eq "yes" -or $signatureStr.ToLower() -eq "true")
+    $sign      = ($signStr.ToLower()      -eq "yes" -or $signStr.ToLower()      -eq "true")
+    $encrypt   = ($encryptStr.ToLower()   -eq "yes" -or $encryptStr.ToLower()   -eq "true")
     
     return @{
         To          = $to
         Subject     = $subject
         Body        = $bodyPart
         Attachments = $attachments
+        Signature   = $signature
         Sign        = $sign
         Encrypt     = $encrypt
     }
@@ -690,11 +781,18 @@ function Parse-DraftContent {
 function Apply-DraftFooter {
     <#
     .SYNOPSIS
-    Apply the email footer to a plain-text body for new drafts, replies
-    and forwards. Returns @{ ContentType = ...; Body = ... }.
-    When an HTML footer exists, the body is converted to HTML first.
+    Apply the email footer when requested. Returns
+    @{ ContentType = ...; Body = ... }. When an HTML footer exists, the body is
+    converted to HTML first.
     #>
-    param([string]$BodyText)
+    param(
+        [string]$BodyText,
+        [bool]$Enabled = $true
+    )
+
+    if (-not $Enabled) {
+        return @{ ContentType = "Text"; Body = $BodyText }
+    }
     
     $footer = Get-Footer
     
@@ -741,22 +839,23 @@ function Apply-DraftFooterBeforeQuotedSection {
     #>
     param(
         [string]$BodyText,
-        [Parameter(Mandatory)][string]$QuotedSectionHeader
+        [Parameter(Mandatory)][string]$QuotedSectionHeader,
+        [bool]$Enabled = $true
     )
 
     if ([string]::IsNullOrWhiteSpace($BodyText)) {
-        return Apply-DraftFooter $BodyText
+        return Apply-DraftFooter -BodyText $BodyText -Enabled $Enabled
     }
 
     $markerIndex = $BodyText.IndexOf($QuotedSectionHeader)
     if ($markerIndex -lt 0) {
-        return Apply-DraftFooter $BodyText
+        return Apply-DraftFooter -BodyText $BodyText -Enabled $Enabled
     }
 
     $introBody = $BodyText.Substring(0, $markerIndex).TrimEnd()
     $quotedBody = $BodyText.Substring($markerIndex).TrimStart()
 
-    $footerResult = Apply-DraftFooter $introBody
+    $footerResult = Apply-DraftFooter -BodyText $introBody -Enabled $Enabled
     $combinedBody = if ([string]::IsNullOrWhiteSpace($footerResult.Body)) {
         if ($footerResult.ContentType -eq "HTML") {
             "<div style=`"margin-top: 18px;`">$(Convert-TextToHtmlFragment $quotedBody)</div>"
