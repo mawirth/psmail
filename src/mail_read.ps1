@@ -25,9 +25,14 @@ function Invoke-OpenMessage {
         Write-Error-Message "Failed to load message"
         return
     }
-    
-    # Display header (let email content naturally push old menu off screen)
-    Write-Host ""
+
+    $readViewStartY = $Host.UI.RawUI.CursorPosition.Y
+    $global:State.ReadViewTopY = $readViewStartY
+    Start-ReadLayoutDebug -Index $Index -MessageId $item.Id -StartY $readViewStartY
+
+    # Display header. The separator is the first row of the read page; do not
+    # add a leading blank line or the viewport target would align that blank
+    # row instead of the message header.
     Write-Host ("=" * 70) -ForegroundColor $Config.Colors.Header
     Write-Host "Subject: " -NoNewline -ForegroundColor $Config.Colors.FieldLabel
     Write-Host $msg.subject
@@ -112,9 +117,11 @@ function Invoke-OpenMessage {
             }
         }
 
+        $verificationLineShown = $false
         if (-not $smimeResult -and $hasSmimeHint) {
             Write-Host "Verifying S/MIME..." `
                 -ForegroundColor $Config.Colors.Info
+            $verificationLineShown = $true
             $smimeResult = Get-MessageSmimeStatus -MessageId $item.Id
             if (Test-PersistableSmimeStatus `
                     $smimeResult.Status `
@@ -284,6 +291,7 @@ function Invoke-OpenMessage {
     #   2. Lazy extraction    - fetch raw MIME and extract if Body is null
     #      (handles the case where result came from persistent cache with Body=null)
     #   3. bodyPreview        - Graph text snippet (~255 chars)
+    $bodyPreviewLineShown = $false
     if ([string]::IsNullOrWhiteSpace($body)) {
         if ($smimeResult -and $smimeResult.Body) {
             $body = $smimeResult.Body
@@ -308,32 +316,42 @@ function Invoke-OpenMessage {
             $body = $msg.bodyPreview
             Write-Host "(S/MIME: showing text preview — full body not extractable)" `
                 -ForegroundColor $Config.Colors.Info
+            $bodyPreviewLineShown = $true
         }
     }
     
-    # Calculate header lines used
-    # (for accurate paging on first page)
-    # Count: blank + top sep + Subject + From + To + Date + bottom sep + blank = 8 base lines
-    $headerLines = 8
-    if ($msg.toRecipients -and $msg.toRecipients.Count -gt 0) {
-        $headerLines += 0  # To is already counted
-    }
-    if ($item.SmimeStatus -ne $Config.SmimeStatus.None) {
-        $headerLines += 5  # S/MIME info: status + signer + issuer + valid + blank
-    }
-    if ($msg.hasAttachments) {
-        $headerLines += 4  # Attachments info adds ~4 lines
-    }
-    
-    # Footer menu takes 4 lines:
-    # blank + REPLY/REPLYALL + FORWARD + blank
-    $footerLines = 4
+    $consoleWidth = $Host.UI.RawUI.WindowSize.Width
+    if ($consoleWidth -le 0) { $consoleWidth = 80 }
+
+    $headerLines = Get-OpenMessageHeaderLineCount `
+        -Message $msg `
+        -SmimeStatus $item.SmimeStatus `
+        -SmimeDetails $smimeResult `
+        -UserAttachmentCount $userAttachments.Count `
+        -VerificationLineShown $verificationLineShown `
+        -BodyPreviewLineShown $bodyPreviewLineShown `
+        -Width $consoleWidth
+    $footerLines = Get-OpenMessageFooterLineCount -Width $consoleWidth
+    $postReadLines = Get-PostOpenMessageLineCount `
+        -View $global:State.View `
+        -Width $consoleWidth
+    Add-ReadLayoutDebugPoint `
+        -Name "after-header" `
+        -Extra @{
+            HeaderLines = $headerLines
+            FooterLines = $footerLines
+            PostReadLines = $postReadLines
+            Width = $consoleWidth
+            Height = $Host.UI.RawUI.WindowSize.Height
+        }
     
     # Display body with paging
     Show-PagedContent `
         -Content $body `
         -HeaderLinesUsed $headerLines `
-        -FooterLinesUsed $footerLines
+        -FooterLinesUsed $footerLines `
+        -PostContentLinesUsed $postReadLines
+    Add-ReadLayoutDebugPoint -Name "after-paged-body"
     Write-Host ""
     
     # Show reply/forward options
@@ -341,6 +359,7 @@ function Invoke-OpenMessage {
         -NoNewline -ForegroundColor $Config.Colors.MenuAction
     Write-Host "[FORWARD] Forward" -ForegroundColor $Config.Colors.MenuAction
     Write-Host ""
+    Add-ReadLayoutDebugPoint -Name "after-read-footer"
     
     # Mark as read if it was unread
     if (-not $msg.isRead) {
@@ -811,6 +830,367 @@ function Convert-HtmlToText {
     return $text.Trim()
 }
 
+function Get-ConsoleWrappedLineCount {
+    <#
+    .SYNOPSIS
+    Estimate how many physical console rows one logical line will occupy.
+    #>
+    param(
+        [AllowNull()]
+        [string]$Line,
+        [int]$Width
+    )
+
+    if ($Width -le 0) { $Width = 80 }
+    if ([string]::IsNullOrEmpty($Line)) { return 1 }
+
+    $visibleLine = Remove-TerminalControlSequences $Line
+    $cellCount = Get-ConsoleDisplayCellCount -Text $visibleLine
+    if ($cellCount -le 0) { return 1 }
+
+    return [Math]::Max(1, [int][Math]::Ceiling($cellCount / $Width))
+}
+
+function Test-ReadLayoutDebugEnabled {
+    return ($env:PSMAIL_LAYOUT_DEBUG -eq "1" -or
+            $env:PSMAIL_LAYOUT_DEBUG -eq "true")
+}
+
+function Get-ReadLayoutDebugPath {
+    $root = if ($Config.CurrentAccount -and $Config.CurrentAccount.DataPath) {
+        $Config.CurrentAccount.DataPath
+    } else {
+        $Config.DataRootPath
+    }
+    return Join-Path $root "read-layout-debug.log"
+}
+
+function Start-ReadLayoutDebug {
+    param(
+        [int]$Index,
+        [string]$MessageId,
+        [int]$StartY
+    )
+
+    if (-not (Test-ReadLayoutDebugEnabled)) { return }
+
+    $global:State.ReadLayoutDebug = @{
+        Path = Get-ReadLayoutDebugPath
+        StartY = $StartY
+        Points = @()
+    }
+
+    Add-ReadLayoutDebugPoint `
+        -Name "start" `
+        -Extra @{
+            Index = $Index
+            MessageId = $MessageId
+            Window = "{0}x{1}" -f `
+                $Host.UI.RawUI.WindowSize.Width, `
+                $Host.UI.RawUI.WindowSize.Height
+            Buffer = "{0}x{1}" -f `
+                $Host.UI.RawUI.BufferSize.Width, `
+                $Host.UI.RawUI.BufferSize.Height
+        }
+}
+
+function Add-ReadLayoutDebugPoint {
+    param(
+        [string]$Name,
+        [hashtable]$Extra = @{}
+    )
+
+    if (-not $global:State -or -not $global:State.ReadLayoutDebug) {
+        return
+    }
+
+    $raw = $Host.UI.RawUI
+    $point = [ordered]@{
+        Name = $Name
+        CursorY = $raw.CursorPosition.Y
+        WindowY = $raw.WindowPosition.Y
+        DeltaFromStart = $raw.CursorPosition.Y - [int]$global:State.ReadLayoutDebug.StartY
+    }
+    foreach ($key in $Extra.Keys) {
+        $point[$key] = $Extra[$key]
+    }
+    $global:State.ReadLayoutDebug.Points += [pscustomobject]$point
+}
+
+function Flush-ReadLayoutDebug {
+    if (-not $global:State -or -not $global:State.ReadLayoutDebug) {
+        return
+    }
+
+    try {
+        $path = $global:State.ReadLayoutDebug.Path
+        $dir = Split-Path $path -Parent
+        if (-not (Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $lines = @("===== Read layout debug $timestamp =====")
+        foreach ($point in $global:State.ReadLayoutDebug.Points) {
+            $values = @()
+            foreach ($prop in $point.PSObject.Properties) {
+                $values += ("{0}={1}" -f $prop.Name, $prop.Value)
+            }
+            $lines += ($values -join " | ")
+        }
+        $lines += ""
+        Add-Content -Path $path -Value $lines -Encoding utf8
+    } catch {
+    } finally {
+        $global:State.Remove("ReadLayoutDebug")
+    }
+}
+
+function Get-ConsoleDisplayCellCount {
+    <#
+    .SYNOPSIS
+    Estimate console display cells, including tab expansion.
+    #>
+    param([string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) { return 0 }
+
+    $cells = 0
+    foreach ($char in $Text.ToCharArray()) {
+        if ($char -eq "`t") {
+            $cells += 8 - ($cells % 8)
+        } elseif ([char]::IsControl($char)) {
+            continue
+        } else {
+            $cells++
+        }
+    }
+
+    return $cells
+}
+
+function Get-OpenMessageFooterLineCount {
+    param([int]$Width)
+
+    $menuLine = "[REPLY] Reply to sender  [REPLYALL] Reply to all  [FORWARD] Forward"
+    return 2 + (Get-ConsoleWrappedLineCount -Line $menuLine -Width $Width)
+}
+
+function Get-PostOpenMessageLineCount {
+    <#
+    .SYNOPSIS
+    Count the menu and prompt printed by the main loop after opening a message.
+    #>
+    param(
+        [string]$View,
+        [int]$Width
+    )
+
+    $lines = @(
+        "",
+        ("-" * 70)
+    )
+
+    switch ($View) {
+        "inbox" {
+            $lines += "[L] List  [R #] Read  [X #/#-#] Delete  [K #/#-#] Junk"
+            $lines += "[FOCUS #] Relevant  [OTHER #] Sonstige  [FOCUS! #] Always Relevant  [OTHER! #] Always Sonstige"
+        }
+        "drafts" {
+            $lines += "[L] List  [NEW] New  [E #] Edit  [SEND #] Send  [X #/#-#] Delete"
+        }
+        "sentitems" {
+            $lines += "[L] List  [R #] Read  [REDRAFT #]  [X #/#-#] Delete"
+        }
+        "deleteditems" {
+            $lines += "[L] List  [R #] Read  [RESTORE #/#-#]  [PURGE #/#-#]"
+        }
+        "junkemail" {
+            $lines += "[L] List  [R #] Read  [INBOX #/#-#]  [X #/#-#] Delete"
+        }
+    }
+
+    $lines += "[I] Inbox  [F] Relevant  [O] Sonstige  [A] Alle  "
+    $lines += "[D] Drafts  [S] Sent  [G] Deleted  [J] Junk"
+    $lines += "[FILTER <text>] Filter messages  [CLEAR] Clear filter"
+    $lines += "[CONTACTS] Search contacts  [SMIME] S/MIME certs  [LOGOUT] Logout  [Q] Quit"
+    $lines += ""
+    $lines += "> "
+
+    $count = 0
+    foreach ($line in $lines) {
+        $count += Get-ConsoleWrappedLineCount -Line $line -Width $Width
+    }
+    return $count
+}
+
+function Get-MorePromptLineCount {
+    param(
+        [int]$RemainingScreenLines,
+        [int]$Width
+    )
+
+    $promptLine = "-- More (~$RemainingScreenLines screen lines remaining) --" +
+        "  [SPACE] Next  [Q] Quit"
+    return 1 + (Get-ConsoleWrappedLineCount -Line $promptLine -Width $Width)
+}
+
+function Get-ConsoleRowsWrittenSince {
+    <#
+    .SYNOPSIS
+    Return how many console rows were written since a buffer Y position.
+    #>
+    param([int]$StartY)
+
+    $currentY = $Host.UI.RawUI.CursorPosition.Y
+    return [Math]::Max(0, $currentY - $StartY)
+}
+
+function Get-SmimeInfoLineCount {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Status,
+        [hashtable]$Details,
+        [int]$Width
+    )
+
+    $lines = @("")
+    $isEncrypted = ($Details -and $Details.IsEncrypted) -or
+        $Status -eq $Config.SmimeStatus.Encrypted
+
+    if ($isEncrypted) {
+        $lines += "Encryption: Encrypted [S/MIME]"
+        if ($Status -eq $Config.SmimeStatus.Encrypted -and $Details -and $Details.Error) {
+            $lines += "Decrypt:     $($Details.Error)"
+        }
+        if ($Status -ne $Config.SmimeStatus.Encrypted) {
+            $lines += ""
+        }
+    }
+
+    switch ($Status) {
+        "SignedTrusted" {
+            $lines += "Signature: Trusted [S/MIME]"
+            if ($Details) {
+                if ($Details.Subject) { $lines += "Signer:      $($Details.Subject)" }
+                if ($Details.Issuer) { $lines += "Issued by:   $($Details.Issuer)" }
+                if ($Details.ValidUntil) { $lines += "Valid until: $($Details.ValidUntil)" }
+            }
+        }
+        "SignedUntrusted" {
+            $lines += "Signature: Untrusted [S/MIME]"
+            if ($Details) {
+                if ($Details.Subject) { $lines += "Signer:      $($Details.Subject)" }
+                $reason = if ($Details.Error) { $Details.Error } `
+                    else { "Certificate chain not trusted" }
+                $lines += "Reason:      $reason"
+            }
+        }
+        "SignedInvalid" {
+            $lines += "Signature: INVALID [S/MIME]"
+            if ($Details -and $Details.Error) {
+                $lines += "Reason:      $($Details.Error)"
+            }
+        }
+        "Encrypted" {
+            if (-not $isEncrypted) {
+                $lines += "Encryption: Encrypted [S/MIME]"
+            }
+            if ($Details -and $Details.Error) {
+                $lines += "Decrypt:     $($Details.Error)"
+            }
+        }
+    }
+
+    $count = 0
+    foreach ($line in $lines) {
+        $count += Get-ConsoleWrappedLineCount -Line $line -Width $Width
+    }
+    return $count
+}
+
+function Get-OpenMessageHeaderLineCount {
+    <#
+    .SYNOPSIS
+    Calculate the rows written before the read body starts.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        $Message,
+        [string]$SmimeStatus,
+        [hashtable]$SmimeDetails,
+        [int]$UserAttachmentCount = 0,
+        [bool]$VerificationLineShown = $false,
+        [bool]$BodyPreviewLineShown = $false,
+        [int]$Width
+    )
+
+    $lines = @(
+        ("=" * 70),
+        "Subject: $($Message.subject)",
+        ("From:    {0} <{1}>" -f `
+            $Message.from.emailAddress.name, `
+            $Message.from.emailAddress.address)
+    )
+
+    if ($Message.toRecipients -and $Message.toRecipients.Count -gt 0) {
+        $toList = $Message.toRecipients | ForEach-Object {
+            if ($_.emailAddress.name) {
+                "{0} <{1}>" -f $_.emailAddress.name, $_.emailAddress.address
+            } else {
+                $_.emailAddress.address
+            }
+        }
+        $lines += "To:      $($toList -join ', ')"
+    }
+
+    $receivedDate = [datetime]$Message.receivedDateTime
+    $lines += "Date:    $(Format-DateTime $receivedDate)"
+
+    if ($VerificationLineShown) {
+        $lines += "Verifying S/MIME..."
+    }
+
+    $count = 0
+    foreach ($line in $lines) {
+        $count += Get-ConsoleWrappedLineCount -Line $line -Width $Width
+    }
+
+    if ($SmimeStatus -and $SmimeStatus -ne $Config.SmimeStatus.None) {
+        $count += Get-SmimeInfoLineCount `
+            -Status $SmimeStatus -Details $SmimeDetails -Width $Width
+    }
+
+    if ($UserAttachmentCount -gt 0) {
+        foreach ($line in @(
+                "",
+                "Attachments: $UserAttachmentCount file(s)",
+                "[SAVE #] Save attachment",
+                "[SAVEALL] Save all attachments")) {
+            $count += Get-ConsoleWrappedLineCount -Line $line -Width $Width
+        }
+    }
+
+    $count += Get-ConsoleWrappedLineCount -Line ("=" * 70) -Width $Width
+    $count += 1
+
+    if ($BodyPreviewLineShown) {
+        $count += Get-ConsoleWrappedLineCount `
+            -Line "(S/MIME: showing text preview - full body not extractable)" `
+            -Width $Width
+    }
+
+    return $count
+}
+
+function Get-ReadViewTargetRowsFromHeaderStart {
+    param([int]$ConsoleHeight)
+
+    if ($ConsoleHeight -le 0) { $ConsoleHeight = 25 }
+    $topInset = Get-TerminalViewportTopInset
+    return [Math]::Max(1, $ConsoleHeight - $topInset - 1)
+}
+
 function Show-PagedContent {
     <#
     .SYNOPSIS
@@ -819,12 +1199,9 @@ function Show-PagedContent {
     param(
         [string]$Content,
         [int]$HeaderLinesUsed = 0,
-        [int]$FooterLinesUsed = 0
+        [int]$FooterLinesUsed = 0,
+        [int]$PostContentLinesUsed = 0
     )
-    
-    if ([string]::IsNullOrWhiteSpace($Content)) {
-        return
-    }
     
     # Get console dimensions
     $consoleHeight = $Host.UI.RawUI.WindowSize.Height
@@ -833,57 +1210,33 @@ function Show-PagedContent {
     if ($consoleHeight -le 0) { $consoleHeight = 25 }
     if ($consoleWidth -le 0) { $consoleWidth = 80 }
     
-    # Available screen lines per page (for subsequent pages)
-    # On subsequent pages, we fill entire screen with content + More prompt.
-    # No header, no footer menu, no main menu visible.
-    $availableLines = $consoleHeight - 3  # Just reserve space for More prompt
+    # Split content into logical lines. Keep each line intact when writing it:
+    # Warp and other terminals only keep long URLs clickable when they perform
+    # the visual wrap themselves, without hard newlines inserted into the URL.
+    $contentText = if ($null -eq $Content) { "" } else { $Content }
+    $contentText = $contentText -replace "`r`n", "`n" -replace "`r", "`n"
+    $logicalLines = $contentText -split "`n"
     
-    # Split content into logical lines
-    $logicalLines = $Content -split "`n"
-    
-    # Apply word-wrapping to each logical line and build screen line info
+    # Keep the full visible text intact. Let the terminal perform visual wraps
+    # so URL text remains inspectable and terminal URL detection still has the
+    # original contiguous link text.
     $screenLineInfo = @()
     foreach ($line in $logicalLines) {
-        if ([string]::IsNullOrEmpty($line)) {
-            # Empty lines take 1 screen line
-            $screenLineInfo += @{
-                WrappedLines = @("")
-                ScreenLines = 1
-            }
-        } else {
-            # Apply word-wrapping at console width
-            # IMPORTANT: @() ensures result is always an array, even for single lines.
-            # Without it, a single string makes WrappedLines[0] return first CHARACTER.
-            $wrapped = @(Format-WordWrap -Text $line -Width $consoleWidth)
-            $screenLineInfo += @{
-                WrappedLines = $wrapped
-                ScreenLines = $wrapped.Count
-            }
+        $screenLineInfo += @{
+            Line        = $line
+            ScreenLines = Get-ConsoleWrappedLineCount `
+                -Line $line -Width $consoleWidth
         }
     }
     
     # Calculate total screen lines
     $totalScreenLines = ($screenLineInfo | Measure-Object -Property ScreenLines -Sum).Sum
     
-    # For first page: Calculate exact lines to display
+    # For each page, calculate exact body lines to display.
     #
-    # Output sequence in Invoke-OpenMessage:
-    #   1. Email header ($HeaderLinesUsed lines)
-    #   2. Email body (X screen lines - what we're calculating)
-    #   3. Footer REPLY/FORWARD menu ($FooterLinesUsed lines)
-    #
-    # Note: Main menu is output AFTER this function returns, not during.
-    # We want to fill the screen to push old content away while keeping header visible.
-    #
-    # Maximum before header scrolls off: Header + Body <= ConsoleHeight
-    # But we also output Footer after body, so: Header + Body + Footer
-    #
-    # To fill screen: Body = ConsoleHeight - Header - Footer
-    #
-    $firstPageAvailableLines = $consoleHeight - $HeaderLinesUsed - $FooterLinesUsed
-    
-    # Ensure minimum
-    if ($firstPageAvailableLines -lt 5) { $firstPageAvailableLines = 5 }
+    # HeaderLinesUsed is measured after the header was actually written, so
+    # wrapped Subject/From/S/MIME/attachment lines are accounted for without
+    # relying on stale fixed estimates.
     
     # Paging mode
     $currentLogicalLine = 0
@@ -895,57 +1248,114 @@ function Show-PagedContent {
         if (-not $isFirstPage) {
             $consoleHeight = $Host.UI.RawUI.WindowSize.Height
             if ($consoleHeight -le 0) { $consoleHeight = 25 }
-            $availableLines = $consoleHeight - 3 - $FooterLinesUsed
+            $consoleWidth = $Host.UI.RawUI.WindowSize.Width
+            if ($consoleWidth -le 0) { $consoleWidth = 80 }
         }
         
-        # Determine available lines for this page
-        $pageLinesAvailable = if ($isFirstPage) { $firstPageAvailableLines } else { $availableLines }
+        $remainingBeforePage = 0
+        for ($i = $currentLogicalLine; $i -lt $totalLogicalLines; $i++) {
+            $remainingBeforePage += $screenLineInfo[$i].ScreenLines
+        }
+
+        # To keep the first header row at the top of the viewport after the
+        # prompt is printed, the cursor must end on start row + Height - 1.
+        # Filling all Height rows would scroll the header row out of view.
+        $targetRowsFromHeaderStart = Get-ReadViewTargetRowsFromHeaderStart `
+            -ConsoleHeight $consoleHeight
+        $preBodyLines = $isFirstPage ? $HeaderLinesUsed : 0
+        $finalReservedLines = $FooterLinesUsed + $PostContentLinesUsed
+        $finalPageLinesAvailable = $targetRowsFromHeaderStart - $preBodyLines - $finalReservedLines
+        if ($finalPageLinesAvailable -lt 0) { $finalPageLinesAvailable = 0 }
+        $morePromptLines = Get-MorePromptLineCount `
+            -RemainingScreenLines $remainingBeforePage `
+            -Width $consoleWidth
+
+        $reservedAfterBody = $finalReservedLines
+        $pageLinesAvailable = $finalPageLinesAvailable
+        if ($remainingBeforePage -gt $finalPageLinesAvailable) {
+            $reservedAfterBody = $morePromptLines
+            $pageLinesAvailable = $targetRowsFromHeaderStart - $preBodyLines - $reservedAfterBody
+            if ($pageLinesAvailable -lt 0) { $pageLinesAvailable = 0 }
+        }
+        Add-ReadLayoutDebugPoint `
+            -Name ("page-plan-{0}" -f ($isFirstPage ? "first" : "next")) `
+            -Extra @{
+                CurrentLine = $currentLogicalLine
+                RemainingRows = $remainingBeforePage
+                PreBodyRows = $preBodyLines
+                FinalReservedRows = $finalReservedLines
+                PostContentRows = $PostContentLinesUsed
+                FinalPageRowsAvailable = $finalPageLinesAvailable
+                MorePromptRows = $morePromptLines
+                ReservedAfterBody = $reservedAfterBody
+                PageRowsAvailable = $pageLinesAvailable
+                TargetRows = $targetRowsFromHeaderStart
+            }
         
-        # Determine how many logical lines fit in the current page
-        # We track both complete and partial logical lines
+        # Determine how many physical rows fit in the current page.
         $screenLinesUsed = 0
         $endLogicalLine = $currentLogicalLine
-        $partialWrappedLineCount = 0  # If > 0, only show this many wrapped lines from last logical line
         
         while ($endLogicalLine -lt $totalLogicalLines) {
             $linesNeeded = $screenLineInfo[$endLogicalLine].ScreenLines
             
             if ($screenLinesUsed + $linesNeeded -le $pageLinesAvailable) {
-                # Entire logical line fits
                 $screenLinesUsed += $linesNeeded
                 $endLogicalLine++
-                $partialWrappedLineCount = 0
             } else {
-                # Logical line doesn't fit completely
-                $remainingSpace = $pageLinesAvailable - $screenLinesUsed
-                
-                if ($remainingSpace -gt 0) {
-                    # Show partial wrapped lines from this logical line
-                    $partialWrappedLineCount = $remainingSpace
-                    $endLogicalLine++
-                }
                 break
             }
         }
         
-        # If no lines fit at all, show at least first logical line (partial if needed)
-        if ($endLogicalLine -eq $currentLogicalLine) {
+        # Always make progress when there is at least one body row available.
+        if ($endLogicalLine -eq $currentLogicalLine -and $pageLinesAvailable -gt 0) {
             $endLogicalLine = $currentLogicalLine + 1
-            $partialWrappedLineCount = [Math]::Min($pageLinesAvailable, $screenLineInfo[$currentLogicalLine].ScreenLines)
+            $screenLinesUsed = $screenLineInfo[$currentLogicalLine].ScreenLines
         }
+
+        # If the optimistic More-prompt reservation would consume the rest of
+        # the body, the page is actually the final page and must reserve the
+        # larger reply/menu/prompt block instead. Re-select body lines with the
+        # final-page budget so the header remains at the top of the viewport.
+        if ($endLogicalLine -ge $totalLogicalLines -and
+            $reservedAfterBody -ne $finalReservedLines) {
+            $reservedAfterBody = $finalReservedLines
+            $pageLinesAvailable = $finalPageLinesAvailable
+            $screenLinesUsed = 0
+            $endLogicalLine = $currentLogicalLine
+
+            while ($endLogicalLine -lt $totalLogicalLines) {
+                $linesNeeded = $screenLineInfo[$endLogicalLine].ScreenLines
+                if ($screenLinesUsed + $linesNeeded -le $pageLinesAvailable) {
+                    $screenLinesUsed += $linesNeeded
+                    $endLogicalLine++
+                } else {
+                    break
+                }
+            }
+
+            if ($endLogicalLine -eq $currentLogicalLine -and $pageLinesAvailable -gt 0) {
+                $endLogicalLine = $currentLogicalLine + 1
+                $screenLinesUsed = $screenLineInfo[$currentLogicalLine].ScreenLines
+            }
+        }
+        Add-ReadLayoutDebugPoint `
+            -Name ("page-selected-{0}" -f ($isFirstPage ? "first" : "next")) `
+            -Extra @{
+                EndLine = $endLogicalLine
+                BodyRowsSelected = $screenLinesUsed
+                LinesSelected = $endLogicalLine - $currentLogicalLine
+                ReservedAfterSelection = $reservedAfterBody
+            }
         
         # Display lines for this page
         for ($i = $currentLogicalLine; $i -lt $endLogicalLine; $i++) {
-            $isLastLogicalLine = ($i -eq $endLogicalLine - 1)
-            $linesToShow = if ($isLastLogicalLine -and $partialWrappedLineCount -gt 0) {
-                $partialWrappedLineCount
-            } else {
-                $screenLineInfo[$i].WrappedLines.Count
-            }
-            
-            for ($j = 0; $j -lt $linesToShow; $j++) {
-                Write-Host $screenLineInfo[$i].WrappedLines[$j]
-            }
+            Write-Host $screenLineInfo[$i].Line
+        }
+
+        $blankLinesToFill = $pageLinesAvailable - $screenLinesUsed
+        for ($i = 0; $i -lt $blankLinesToFill; $i++) {
+            Write-Host ""
         }
         
         # Check if more content available
@@ -967,7 +1377,7 @@ function Show-PagedContent {
             
             # Clear the prompt line
             Write-Host "`r" -NoNewline
-            Write-Host (" " * 100) -NoNewline
+            Write-Host (" " * ([Math]::Max(1, $consoleWidth - 1))) -NoNewline
             Write-Host "`r" -NoNewline
             
             # Handle key

@@ -215,7 +215,7 @@ function Show-Menu {
     .SYNOPSIS
     Display context-sensitive menu based on current view
     #>
-    
+    Add-ReadLayoutDebugPoint -Name "before-main-menu"
     Write-Host ""
     Write-Host ("-" * 70) -ForegroundColor $Config.Colors.Separator
     
@@ -273,6 +273,7 @@ function Show-Menu {
     Write-Host "[LOGOUT] Logout  [Q] Quit" `
         -ForegroundColor $Config.Colors.MenuGlobal
     Write-Host ""
+    Add-ReadLayoutDebugPoint -Name "after-main-menu"
 }
 
 function Read-Command {
@@ -282,6 +283,9 @@ function Read-Command {
     #>
     
     Write-Host "> " -NoNewline -ForegroundColor $Config.Colors.Prompt
+    Set-PendingReadViewTop
+    Add-ReadLayoutDebugPoint -Name "after-prompt"
+    Flush-ReadLayoutDebug
     $input = Read-Host
     
     if ([string]::IsNullOrWhiteSpace($input)) {
@@ -296,6 +300,33 @@ function Read-Command {
     return @{
         Command = $cmd
         Argument = $arg
+    }
+}
+
+function Set-PendingReadViewTop {
+    <#
+    .SYNOPSIS
+    Position the viewport at the currently opened message header.
+    #>
+
+    if (-not $global:State -or $null -eq $global:State.ReadViewTopY) {
+        return
+    }
+
+    try {
+        $raw = $Host.UI.RawUI
+        $topY = [int]$global:State.ReadViewTopY
+        $topY -= Get-TerminalViewportTopInset
+        $maxTopY = [Math]::Max(0, $raw.BufferSize.Height - $raw.WindowSize.Height)
+        $topY = [Math]::Max(0, [Math]::Min($topY, $maxTopY))
+
+        $position = $raw.WindowPosition
+        $position.Y = $topY
+        $raw.WindowPosition = $position
+    } catch {
+        # Some hosts may reject WindowPosition changes; rendering still works.
+    } finally {
+        $global:State.Remove("ReadViewTopY")
     }
 }
 

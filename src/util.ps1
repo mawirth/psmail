@@ -31,9 +31,28 @@ function Remove-TerminalControlSequences {
     }
 
     $escapeChar = [char]27
-    $sanitized = $Text -replace "$([regex]::Escape([string]$escapeChar))\[[0-?]*[ -/]*[@-~]", ""
+    $escapePattern = [regex]::Escape([string]$escapeChar)
+    $sanitized = $Text -replace "$escapePattern\][^\x07]*(?:\x07|$escapePattern\\)", ""
+    $sanitized = $sanitized -replace "$escapePattern\[[0-?]*[ -/]*[@-~]", ""
     $sanitized = $sanitized -replace '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', ""
     return $sanitized
+}
+
+function Get-TerminalViewportTopInset {
+    <#
+    .SYNOPSIS
+    Return host UI rows that visually cover the top of the terminal viewport.
+    #>
+
+    if ($env:TERM_PROGRAM -eq "WarpTerminal" -or
+        -not [string]::IsNullOrWhiteSpace($env:WARP_IS_LOCAL_SHELL_SESSION)) {
+        # Warp's command-block header can stay pinned over the first visible
+        # terminal rows. RawUI does not subtract those overlay rows, so psmail
+        # keeps the message header below them.
+        return 2
+    }
+
+    return 0
 }
 
 function Format-DateTime {

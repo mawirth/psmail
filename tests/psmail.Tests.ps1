@@ -5,6 +5,7 @@ $script:RepoRoot = Split-Path $PSScriptRoot -Parent
 . (Join-Path $script:RepoRoot 'src' -AdditionalChildPath 'util.ps1')
 . (Join-Path $script:RepoRoot 'src' -AdditionalChildPath 'state.ps1')
 . (Join-Path $script:RepoRoot 'src' -AdditionalChildPath 'accounts.ps1')
+. (Join-Path $script:RepoRoot 'src' -AdditionalChildPath 'mail_read.ps1')
 
 Describe "Parse-IndexRange" {
     It "parses comma-separated numbers and ranges in sorted order" {
@@ -17,6 +18,66 @@ Describe "Parse-IndexRange" {
 
     It "returns null for invalid input" {
         Parse-IndexRange "1,a" | Should BeNullOrEmpty
+    }
+}
+
+Describe "Read view wrapping" {
+    It "estimates wrapped rows without changing the original line" {
+        $url = "https://example.com/" + ("a" * 81)
+
+        Get-ConsoleWrappedLineCount -Line $url -Width 40 | Should Be 3
+        $url | Should Be ("https://example.com/" + ("a" * 81))
+    }
+
+    It "counts the terminating newline after an exact-width line" {
+        Get-ConsoleWrappedLineCount -Line ("x" * 40) -Width 40 | Should Be 1
+        Get-ConsoleWrappedLineCount -Line ("x" * 41) -Width 40 | Should Be 2
+        Get-ConsoleWrappedLineCount -Line ("x" * 80) -Width 40 | Should Be 2
+        Get-ConsoleWrappedLineCount -Line ("x" * 81) -Width 40 | Should Be 3
+    }
+
+    It "counts empty and control-sequence-only lines as one row" {
+        Get-ConsoleWrappedLineCount -Line "" -Width 40 | Should Be 1
+        Get-ConsoleWrappedLineCount -Line "$([char]27)[31m$([char]27)[0m" -Width 40 |
+            Should Be 1
+    }
+
+    It "expands tabs when estimating display cells" {
+        Get-ConsoleDisplayCellCount -Text "a`tbc" | Should Be 10
+    }
+
+    It "reserves lines for the main menu printed after reading" {
+        Get-PostOpenMessageLineCount -View "inbox" -Width 120 | Should BeGreaterThan 8
+    }
+
+    It "uses height minus one as the read-view cursor target" {
+        $oldTermProgram = $env:TERM_PROGRAM
+        $oldWarpSession = $env:WARP_IS_LOCAL_SHELL_SESSION
+        try {
+            $env:TERM_PROGRAM = ""
+            $env:WARP_IS_LOCAL_SHELL_SESSION = ""
+
+            Get-ReadViewTargetRowsFromHeaderStart -ConsoleHeight 30 | Should Be 29
+            Get-ReadViewTargetRowsFromHeaderStart -ConsoleHeight 0 | Should Be 24
+        } finally {
+            $env:TERM_PROGRAM = $oldTermProgram
+            $env:WARP_IS_LOCAL_SHELL_SESSION = $oldWarpSession
+        }
+    }
+
+    It "accounts for Warp's pinned command header" {
+        $oldTermProgram = $env:TERM_PROGRAM
+        $oldWarpSession = $env:WARP_IS_LOCAL_SHELL_SESSION
+        try {
+            $env:TERM_PROGRAM = "WarpTerminal"
+            $env:WARP_IS_LOCAL_SHELL_SESSION = "1"
+
+            Get-TerminalViewportTopInset | Should Be 2
+            Get-ReadViewTargetRowsFromHeaderStart -ConsoleHeight 31 | Should Be 28
+        } finally {
+            $env:TERM_PROGRAM = $oldTermProgram
+            $env:WARP_IS_LOCAL_SHELL_SESSION = $oldWarpSession
+        }
     }
 }
 
