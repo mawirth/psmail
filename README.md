@@ -3,6 +3,11 @@
 A draft-first console email client for **Outlook.com** and **Microsoft 365** accounts
 using **Microsoft Graph API**.
 
+For a smaller, scriptable, cross-platform Python CLI, see
+[mawirth/msmail](https://github.com/mawirth/msmail). `msmail` is intended for
+Unix-style scripting and portable use, while `psmail` remains the richer
+PowerShell console client.
+
 ![psmail inbox view](email_pixelated.jpg)
 
 ## Features
